@@ -1,0 +1,81 @@
+# Release APK — manual trigger only.
+#
+# This workflow NEVER runs on push/PR ("leave it off for automated builds").
+# Trigger it by hand from the Actions tab for a release (e.g. v0.1):
+# it lints, tests, builds the release APK, and uploads it as an artifact
+# with a hash-stamped filename (gw2-ptp-<sha8>.apk) plus a .sha256 file.
+#
+# Signing: release builds are debug-signed (Flutter template default), so
+# the workflow restores android/debug.keystore to ~/.android/debug.keystore
+# before building. That key is the identity of every installed build —
+# same key => the APK installs as an update. Do not lose it.
+
+name: Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: 'Release name (e.g. v0.1)'
+        required: false
+        default: 'manual'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Restore debug keystore
+        run: |
+          mkdir -p ~/.android
+          cp android/debug.keystore ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Hash-stamp the APK
+        run: |
+          cd build/app/outputs/flutter-apk
+          SHA=$(sha256sum app-release.apk | cut -d' ' -f1)
+          SHORT=${SHA:0:8}
+          mv app-release.apk "gw2-ptp-${SHORT}.apk"
+          echo "${SHA}  gw2-ptp-${SHORT}.apk" > "gw2-ptp-${SHORT}.apk.sha256"
+          echo "APK=gw2-ptp-${SHORT}.apk" >> "$GITHUB_ENV"
+          echo "SHA256=${SHA}" >> "$GITHUB_ENV"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK }}
+          path: |
+            build/app/outputs/flutter-apk/${{ env.APK }}
+            build/app/outputs/flutter-apk/${{ env.APK }}.sha256
+
+      - name: Summary
+        run: |
+          echo "### ${{ inputs.release_name }} built" >> "$GITHUB_STEP_SUMMARY"
+          echo "APK: \`${{ env.APK }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-256: \`${{ env.SHA256 }}\`" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,46 @@
+name: gw2tp
+description: "Personal Guild Wars 2 Trading Post companion: inventory search, held items, and open orders."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Keyed Guild Wars 2 API calls (wallet, delivery, transactions, inventory).
+  http: ^1.6.0
+  # App state (ChangeNotifier).
+  provider: ^6.1.5
+  # API key lives in the Android Keystore, never in plain prefs or logs.
+  flutter_secure_storage: ^9.2.4
+  # Permanent on-disk cache of item names/icons (item metadata is static).
+  shared_preferences: ^2.5.4
+  # Item icons from render.guildwars2.com, cached on disk forever
+  # (render URLs are content-hashed and never change meaning).
+  cached_network_image: ^3.4.1
+  flutter_cache_manager: ^3.4.5
+  # Active sync mode: periodic API pings with the screen off.
+  flutter_foreground_task: ^9.0.0
+  # Fill notifications for buy/sell orders.
+  flutter_local_notifications: ^17.2.3
+  # IANA timezone database for DST-safe scheduling.
+  # Pinned to the 0.9.x line: flutter_local_notifications 17.x requires
+  # timezone ^0.9.0, and 0.10+/0.11+ break version solving.
+  timezone: ^0.9.4
+  # Battery-optimization exemption prompt for active sync mode.
+  # Battery optimization exemption is implemented natively via MainActivity.kt
+  # (the disable_battery_optimization plugin is unmaintained; its Android
+  # build script still calls the dead jcenter() repository).
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
