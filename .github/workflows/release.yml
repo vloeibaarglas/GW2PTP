@@ -5,10 +5,14 @@
 # it lints, tests, builds the release APK, and uploads it as an artifact
 # with a hash-stamped filename (gw2-ptp-<sha8>.apk) plus a .sha256 file.
 #
-# Signing: release builds are debug-signed (Flutter template default), so
-# the workflow restores android/debug.keystore to ~/.android/debug.keystore
-# before building. That key is the identity of every installed build —
-# same key => the APK installs as an update. Do not lose it.
+# Signing: release builds are signed with the release key. The workflow
+# restores it from repo secrets (see below) and writes android/key.properties
+# for Gradle. That key is the identity of every installed build — same key
+# => the APK installs as an update. Required secrets:
+#   ANDROID_KEYSTORE_BASE64  — base64 of the release keystore file
+#   ANDROID_KEYSTORE_PASSWORD — keystore + key password
+#   ANDROID_KEY_ALIAS        — key alias (gw2ptp)
+# Do not lose the keystore or its password.
 
 name: Release APK
 
@@ -47,11 +51,22 @@ jobs:
       - name: Test
         run: flutter test
 
-      - name: Restore debug keystore
+      - name: Restore release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          mkdir -p ~/.android
-          cp android/debug.keystore ~/.android/debug.keystore
-          chmod 600 ~/.android/debug.keystore
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is not set (see workflow header)."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/release.keystore
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=release.keystore
+          EOF
+          chmod 600 android/key.properties android/release.keystore
 
       - name: Build release APK
         run: flutter build apk --release

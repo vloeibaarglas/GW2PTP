@@ -54,7 +54,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: TextField(
             controller: _search,
             decoration: const InputDecoration(
@@ -101,14 +101,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final locations = _memoLocations!;
 
     if (inventory.isEmpty || locations.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Center(
-          child: Text(
-            inventory.isEmpty
-                ? 'No inventory data. Pull to refresh.'
-                : 'No items match "${_search.text.trim()}".',
-          ),
+      // Keep pull-to-refresh working in the empty state: the "Pull to
+      // refresh" copy promises it.
+      return RefreshIndicator(
+        onRefresh: app.refreshAll,
+        child: CustomScrollView(
+          slivers: [
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Text(
+                  inventory.isEmpty
+                      ? 'No inventory data. Pull to refresh.'
+                      : 'No items match "${_search.text.trim()}".',
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -122,20 +131,27 @@ class _InventoryScreenState extends State<InventoryScreen> {
       child: CustomScrollView(
         slivers: [
           for (final location in locations)
-            _AreaSection(
-              location: location,
-              entries: groups[location]!,
-              metaLookup: app.meta.lookup,
-              expanded: searching || !collapsed.contains(location),
-              onToggle: () => setState(() {
-                if (collapsed.contains(location)) {
-                  collapsed.remove(location);
-                } else {
-                  collapsed.add(location);
-                }
-              }),
+            // Horizontal 16 to mirror the ListView padding on the
+            // Listings/Deliveries tabs; vertical rhythm lives on the cards.
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: _AreaSection(
+                location: location,
+                entries: groups[location]!,
+                metaLookup: app.meta.lookup,
+                expanded: searching || !collapsed.contains(location),
+                onToggle: () => setState(() {
+                  if (collapsed.contains(location)) {
+                    collapsed.remove(location);
+                  } else {
+                    collapsed.add(location);
+                  }
+                }),
+              ),
             ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          // Matches the other tabs: last row's 4px card margin + 16 = 20px
+          // of breathing room at the list end.
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
         ],
       ),
     );
@@ -166,16 +182,15 @@ class _AreaSection extends StatelessWidget {
     return SliverMainAxisGroup(
       slivers: [
         SliverToBoxAdapter(
+          // 8px top (+8 from the search field or the previous section's
+          // rows) and 8px bottom mirror the block rhythm on the other tabs.
           child: Card(
-            margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+            margin: const EdgeInsets.only(top: 8, bottom: 8),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: onToggle,
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
+                padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
                     Expanded(

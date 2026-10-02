@@ -113,7 +113,18 @@ void main() {
     // Day granularity lives behind the dial button (default range is 24H).
     expect(find.text('Days'), findsOneWidget);
 
+    // Bought Value tile parallels the Sold tab's Listed Value tile (no net:
+    // buys pay no Trading Post cut).
+    expect(find.text('Bought Value'), findsOneWidget);
+
     // Delivery box items keep their section below the history.
+    final listView = find.byType(ListView);
+    await tester.dragUntilVisible(
+      find.text('Waiting For Pickup'),
+      listView,
+      const Offset(0, -500),
+      maxIteration: 400,
+    );
     expect(find.text('Waiting For Pickup'), findsOneWidget);
     expect(find.text('×3', skipOffstage: false), findsOneWidget);
   });

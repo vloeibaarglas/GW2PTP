@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/gw2_client.dart';
 import '../api/models.dart';
 import '../api/permissions.dart';
+import '../store/data_cache.dart';
 import '../store/item_meta_cache.dart';
 import '../store/key_store.dart';
 import '../store/sync_settings.dart';
@@ -138,6 +139,7 @@ class AppState extends ChangeNotifier {
   final ItemMetaCache meta;
   final FillNotifier notifier;
   final SyncService syncService;
+  final DataCache _cache;
 
   AppState({
     required KeyStore keys,
@@ -145,11 +147,13 @@ class AppState extends ChangeNotifier {
     required SharedPreferences prefs,
     required this.notifier,
     required this.syncService,
+    DataCache? dataCache,
   })  : _keys = keys,
         _api = api,
         settings = SyncSettings(prefs),
         themeSettings = ThemeSettings(prefs),
-        meta = ItemMetaCache(prefs);
+        meta = ItemMetaCache(prefs),
+        _cache = dataCache ?? DataCache(prefs);
 
   bool _keyLoaded = false;
   String? _apiKey;
@@ -281,12 +285,17 @@ class AppState extends ChangeNotifier {
     return 'at ${formatClockTime(dt)}';
   }
 
-  /// Boot: load the key, then sync in passive mode or ensure the service
-  /// is up in active mode.
+  /// Boot: load the key, restore the last sync's data from disk so the
+  /// first frame is never empty, then sync in passive mode or ensure the
+  /// service is up in active mode.
   Future<void> init() async {
     _apiKey = await _keys.readApiKey();
-    _keyLoaded = true;
     _loadHistoryViewPrefs();
+    // After a swipe-away the process is gone; without this the app shows
+    // empty lists until the API refresh below completes. The refresh still
+    // runs — the cache just covers the gap.
+    await _restoreCache();
+    _keyLoaded = true;
     notifyListeners();
     if (_apiKey == null) return;
     await _checkPermissions(_apiKey!);
@@ -369,6 +378,63 @@ class AppState extends ChangeNotifier {
     await _checkPermissions(key);
   }
 
+  /// Restores the last successful sync from disk. Runs at boot before the
+  /// first frame so a cold start shows data instantly. A missing or
+  /// corrupt cache leaves the (empty) in-memory state alone — never throws.
+  Future<void> _restoreCache() async {
+    final snap = await _cache.load();
+    if (snap == null) return;
+    walletCoins = snap.walletCoins;
+    delivery = snap.delivery;
+    buys = snap.buys;
+    sells = snap.sells;
+    _soldHistoryCache = snap.soldHistory;
+    _boughtHistoryCache = snap.boughtHistory;
+    _seenSoldIds
+      ..clear()
+      ..addAll(snap.soldHistory.map((t) => t.id));
+    _seenBoughtIds
+      ..clear()
+      ..addAll(snap.boughtHistory.map((t) => t.id));
+    soldHistoryCoveredSince =
+        DateTime.fromMillisecondsSinceEpoch(snap.soldCoveredSinceMs);
+    boughtHistoryCoveredSince =
+        DateTime.fromMillisecondsSinceEpoch(snap.boughtCoveredSinceMs);
+    soldHistoryCapped = snap.soldCapped;
+    boughtHistoryCapped = snap.boughtCapped;
+    soldHistoryFetchedAt =
+        DateTime.fromMillisecondsSinceEpoch(snap.soldFetchedAtMs);
+    boughtHistoryFetchedAt =
+        DateTime.fromMillisecondsSinceEpoch(snap.boughtFetchedAtMs);
+    inventory = snap.inventory;
+  }
+
+  /// Persists the current state after a successful sync. A failed write
+  /// never fails the sync — the previous cache stays in place.
+  Future<void> _saveCache() async {
+    try {
+      await _cache.save(
+        DataSnapshot(
+          savedAtMs: DateTime.now().millisecondsSinceEpoch,
+          walletCoins: walletCoins,
+          delivery: delivery,
+          buys: buys,
+          sells: sells,
+          soldHistory: _soldHistoryCache,
+          boughtHistory: _boughtHistoryCache,
+          soldCoveredSinceMs: soldHistoryCoveredSince.millisecondsSinceEpoch,
+          boughtCoveredSinceMs:
+              boughtHistoryCoveredSince.millisecondsSinceEpoch,
+          soldCapped: soldHistoryCapped,
+          boughtCapped: boughtHistoryCapped,
+          soldFetchedAtMs: soldHistoryFetchedAt.millisecondsSinceEpoch,
+          boughtFetchedAtMs: boughtHistoryFetchedAt.millisecondsSinceEpoch,
+          inventory: inventory,
+        ),
+      );
+    } catch (_) {}
+  }
+
   Future<void> refreshAll() async {
     final key = _apiKey;
     if (key == null) return;
@@ -430,6 +496,7 @@ class AppState extends ChangeNotifier {
         await meta.warm(ids, _api.fetchItemMeta);
 
         await settings.setLastSyncAtMs(DateTime.now().millisecondsSinceEpoch);
+        await _saveCache();
         status = LoadStatus.loaded;
         if (failures.isNotEmpty) {
           sectionNotice = "Couldn't load: ${failures.join(', ')}.";
@@ -770,6 +837,7 @@ class AppState extends ChangeNotifier {
     await syncService.stop();
     serviceRunning = false;
     await _keys.deleteApiKey();
+    await _cache.clear();
     _apiKey = null;
     walletCoins = 0;
     delivery = const DeliveryBox(coins: 0, items: []);

@@ -62,6 +62,8 @@ class _BoughtTabState extends State<_BoughtTab> {
     final items = state.delivery.items;
     final theme = Theme.of(context);
 
+    final boughtTotal = history.fold<int>(0, (sum, t) => sum + t.totalValue);
+
     return RefreshIndicator(
       onRefresh: state.refreshAll,
       child: ListView(
@@ -90,6 +92,29 @@ class _BoughtTabState extends State<_BoughtTab> {
             onChanged: state.setBoughtRange,
           ),
           const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Bought Value'),
+                        CoinsText(
+                          boughtTotal,
+                          style: theme.textTheme.headlineSmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           ..._historyRows(
             history: history,
             grouping: state.boughtGrouping,
@@ -107,7 +132,7 @@ class _BoughtTabState extends State<_BoughtTab> {
           if (items.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: Text('No bought items waiting.')),
+              child: Center(child: Text('No items waiting for pickup.')),
             ),
           for (final item in items)
             Card(
@@ -356,6 +381,7 @@ class _SoldTabState extends State<_SoldTab> {
           ),
           Card(
             child: ListTile(
+              dense: true,
               leading: Image.asset(
                 'assets/images/coin_gold.png',
                 width: 40,

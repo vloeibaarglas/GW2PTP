@@ -83,6 +83,24 @@ class InventoryEntry {
   /// True when the stack can be listed on the Trading Post: not flagged
   /// NoSell and not bound.
   bool isSellable(ItemMeta meta) => !meta.noSell && !isBound(meta);
+
+  Map<String, dynamic> toJson() => {
+        'id': itemId,
+        'count': count,
+        'location': location,
+        if (detail != null) 'detail': detail,
+        if (binding != null) 'binding': binding,
+      };
+
+  factory InventoryEntry.fromJson(Map<String, dynamic> json) {
+    return InventoryEntry(
+      itemId: _asInt(json['id']),
+      count: _asInt(json['count']),
+      location: (json['location'] as String?) ?? '',
+      detail: json['detail'] as String?,
+      binding: json['binding'] as String?,
+    );
+  }
 }
 
 /// The Trading Post delivery box: coins and items waiting for pickup.
@@ -114,6 +132,14 @@ class DeliveryBox {
     }
     return DeliveryBox(coins: _asInt(json['coins']), items: items);
   }
+
+  /// Cache shape mirrors the API shape, so [DeliveryBox.fromJson] reads it.
+  Map<String, dynamic> toJson() => {
+        'coins': coins,
+        'items': [
+          for (final i in items) {'id': i.itemId, 'count': i.count},
+        ],
+      };
 }
 
 /// One open Trading Post order (buy or sell).
@@ -142,6 +168,14 @@ class TpOrder {
   /// Total value at the listed price: order value (buys) or the ask
   /// (sells). The listed price is the valuation — no market ping needed.
   int get totalValue => price * quantity;
+
+  /// Cache shape mirrors the API shape, so [TpOrder.fromJson] reads it.
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'item_id': itemId,
+        'price': price,
+        'quantity': quantity,
+      };
 }
 
 /// One filled transaction from /v2/commerce/transactions/history.
@@ -179,6 +213,16 @@ class TpTransaction {
 
   /// Gross proceeds at the sale price.
   int get totalValue => price * quantity;
+
+  /// Cache shape mirrors the API shape: [TpTransaction.fromJson] prefers
+  /// `purchased`, so the fill timestamp round-trips through it.
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'item_id': itemId,
+        'price': price,
+        'quantity': quantity,
+        'purchased': filledAt?.toIso8601String(),
+      };
 }
 
 int _asInt(dynamic value) {
