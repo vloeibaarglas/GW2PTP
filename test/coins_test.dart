@@ -27,6 +27,29 @@ void main() {
     test('negative values', () {
       expect(formatCoins(-150), '-1s 50c');
     });
+
+    test('5-digit gold drops copper', () {
+      expect(formatCoins(166696691), '16669g 66s');
+    });
+
+    test('6-digit gold drops copper', () {
+      expect(formatCoins(9999999999), '999999g 99s');
+    });
+
+    test('7-digit gold drops silver too', () {
+      expect(formatCoins(12345678912), '1234567g');
+    });
+
+    test('boundary: 9999g keeps copper, 10000g drops it', () {
+      expect(formatCoins(99999999), '9999g 99s 99c');
+      expect(formatCoins(100000000), '10000g');
+      expect(formatCoins(100005000), '10000g 50s');
+    });
+
+    test('boundary: 999999g keeps silver, 1000000g drops it', () {
+      expect(formatCoins(9999999999), '999999g 99s');
+      expect(formatCoins(10000000000), '1000000g');
+    });
   });
 
   group('coinParts', () {

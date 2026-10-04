@@ -4,6 +4,8 @@
 library;
 
 String formatClockTime(DateTime dt) {
+  // API timestamps arrive in UTC; the contract is device-local display.
+  dt = dt.toLocal();
   final now = DateTime.now();
   final h = dt.hour;
   final hour12 = h % 12 == 0 ? 12 : h % 12;

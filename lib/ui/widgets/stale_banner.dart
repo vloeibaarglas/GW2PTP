@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
+import 'notice_banner.dart';
 
 class StaleBanner extends StatelessWidget {
   const StaleBanner({super.key});
@@ -61,38 +62,22 @@ class StaleBanner extends StatelessWidget {
       text = 'Updated ${state.lastSyncLabel}.';
     }
 
-    return InkWell(
+    return NoticeBanner(
+      icon: icon,
+      text: text,
+      background: bg,
+      foreground: fg,
       onTap: loading ? null : () => state.refreshAll(),
-      child: Container(
-        width: double.infinity,
-        color: bg,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: fg),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                text,
-                style: TextStyle(color: fg, fontSize: 12),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+      trailing: loading
+          ? SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: fg,
               ),
-            ),
-            if (loading)
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: fg,
-                ),
-              )
-            else
-              Icon(Icons.refresh, size: 16, color: fg),
-          ],
-        ),
-      ),
+            )
+          : Icon(Icons.refresh, size: 16, color: fg),
     );
   }
 }

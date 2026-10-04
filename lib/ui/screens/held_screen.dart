@@ -8,13 +8,21 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../api/gw2_client.dart';
 import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../../util/coins.dart';
+import '../../util/collections.dart';
+import '../../util/day_label.dart';
+import '../../util/numbers.dart';
 import '../../util/time_ago.dart';
 import '../widgets/coins_text.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/item_tile.dart';
+import '../widgets/history_filters.dart';
+import '../widgets/notice_banner.dart';
 import '../widgets/range_selector.dart';
+import '../widgets/value_tile.dart';
 
 class HeldScreen extends StatelessWidget {
   const HeldScreen({super.key});
@@ -55,6 +63,10 @@ class _BoughtTabState extends State<_BoughtTab> {
   /// Tapping a row toggles it (single-expanded).
   String? _expandedRowKey;
 
+  /// Memoized grouped view: regroups only when the history instance or
+  /// grouping changes (see [_GroupedHistoryView]).
+  final _view = _GroupedHistoryView();
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
@@ -62,90 +74,92 @@ class _BoughtTabState extends State<_BoughtTab> {
     final items = state.delivery.items;
     final theme = Theme.of(context);
 
-    final boughtTotal = history.fold<int>(0, (sum, t) => sum + t.totalValue);
+    final boughtTotal = _view.totalFor(history, state.boughtGrouping);
+    final pickupMode = state.boughtMode == BoughtMode.pickup;
+
+    // In pickup mode the history controls stay visible but greyed out and
+    // uninteractable — they only apply to the historical record.
+    Widget historyControls(Widget child) => pickupMode
+        ? IgnorePointer(
+            ignoring: true,
+            child: Opacity(opacity: 0.38, child: child),
+          )
+        : child;
 
     return RefreshIndicator(
       onRefresh: state.refreshAll,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Group By', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 4),
-          SegmentedButton<HistoryGrouping>(
+          SegmentedButton<BoughtMode>(
+            style: compactSegmentedStyle,
             segments: const [
-              ButtonSegment(
-                  value: HistoryGrouping.txn, label: Text('By Txn')),
-              ButtonSegment(
-                  value: HistoryGrouping.item, label: Text('By Item')),
-              ButtonSegment(
-                  value: HistoryGrouping.price, label: Text('By Price')),
+              ButtonSegment(value: BoughtMode.pickup, label: Text('Pickup')),
+              ButtonSegment(value: BoughtMode.history, label: Text('History')),
             ],
-            selected: {state.boughtGrouping},
-            onSelectionChanged: (s) => state.setBoughtGrouping(s.first),
+            selected: {state.boughtMode},
+            onSelectionChanged: (s) => state.setBoughtMode(s.first),
             showSelectedIcon: false,
           ),
           const SizedBox(height: 8),
-          Text('Range', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 4),
-          HistoryRangeSelector(
-            current: state.boughtRange,
-            onChanged: state.setBoughtRange,
+          historyControls(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                HistoryFilters(
+                  grouping: state.boughtGrouping,
+                  onGroupingChanged: state.setBoughtGrouping,
+                  range: state.boughtRange,
+                  onRangeChanged: state.setBoughtRange,
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Bought Value'),
-                        CoinsText(
-                          boughtTotal,
-                          style: theme.textTheme.headlineSmall,
-                        ),
-                      ],
-                    ),
+          if (!pickupMode && state.boughtHistoryTruncated)
+            _capWarningTile(state.boughtHistoryCoveredSince),
+          historyControls(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ValueTile(
+                  labels: const ['Bought Value'],
+                  copperValues: [boughtTotal],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+          if (pickupMode) ...[
+            Text('Waiting For Pickup', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            if (items.isEmpty)
+              const EmptyState('No items waiting for pickup.'),
+            for (final item in items)
+              Card(
+                margin: const EdgeInsets.only(bottom: 4),
+                child: ItemTile(
+                  itemId: item.itemId,
+                  metaLookup: state.meta.lookup,
+                  subtitle: Text(
+                    '×${item.count}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          ..._historyRows(
-            history: history,
-            grouping: state.boughtGrouping,
-            expandedRowKey: _expandedRowKey,
-            onToggleRow: (key) => setState(
-                () => _expandedRowKey = _expandedRowKey == key ? null : key),
-            metaLookup: state.meta.lookup,
-            fillsNoun: 'buys',
-            capped: state.boughtHistoryCapped,
-            emptyText: 'No recent purchases.',
-          ),
-          const SizedBox(height: 8),
-          Text('Waiting For Pickup', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 4),
-          if (items.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: Text('No items waiting for pickup.')),
-            ),
-          for (final item in items)
-            Card(
-              margin: const EdgeInsets.only(bottom: 4),
-              child: ItemTile(
-                itemId: item.itemId,
-                metaLookup: state.meta.lookup,
-                subtitle: Text(
-                  '×${item.count}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+          ] else
+            ..._historyRows(
+              rows: _view.rowsFor(history, state.boughtGrouping),
+              isEmpty: history.isEmpty,
+              grouping: state.boughtGrouping,
+              expandedRowKey: _expandedRowKey,
+              onToggleRow: (key) => setState(
+                  () => _expandedRowKey = _expandedRowKey == key ? null : key),
+              metaLookup: state.meta.lookup,
+              fillsNoun: 'buys',
+              capped: state.boughtHistoryTruncated,
+              emptyText: 'No recent purchases.',
             ),
         ],
       ),
@@ -207,16 +221,10 @@ List<HistoryRow> groupHistory(List<TpTransaction> history, HistoryGrouping mode)
           ),
       ];
     case HistoryGrouping.price:
-      final byKey = <String, List<TpTransaction>>{};
-      for (final t in history) {
-        byKey.putIfAbsent('${t.itemId}@${t.price}', () => []).add(t);
-      }
+      final byKey = groupByKey(history, (t) => '${t.itemId}@${t.price}');
       return [for (final g in byKey.values) _collapse(g)];
     case HistoryGrouping.item:
-      final byItem = <int, List<TpTransaction>>{};
-      for (final t in history) {
-        byItem.putIfAbsent(t.itemId, () => []).add(t);
-      }
+      final byItem = groupByKey(history, (t) => t.itemId);
       return [for (final g in byItem.values) _collapse(g)];
   }
 }
@@ -249,17 +257,75 @@ Widget _historyRowSubtitle(
   );
 }
 
-/// Grouped history rows with tap-to-expand subtitles and the 2,000-row cap
+/// "25,000" for the history cap: AppState.historyMaxPages × 200 rows per
+/// page. Computed, not hardcoded, so the footer and warning tile track the
+/// cap if it ever changes.
+String _capCountLabel() =>
+    commas(AppState.historyMaxPages * Gw2Api.historyPageSize);
+
+/// "Sep 14, 2026" in the device's local timezone, for the cap warning.
+String _capDateLabel(DateTime dt) => dayLabel(dt);
+
+/// Warning tile placed directly below the range selector when the history
+/// fetch walked the full page cap without covering the selected window:
+/// the totals only reflect the most recent [cap] transactions, back to
+/// [coveredSince]. Rare by design — most users never see it.
+Widget _capWarningTile(DateTime coveredSince) {
+  return NoticeBanner(
+    card: true,
+    maxLines: null,
+    icon: Icons.warning_amber_outlined,
+    text: 'Showing the ${_capCountLabel()} most recent transactions, '
+        'back to ${_capDateLabel(coveredSince)} — older activity in '
+        'this range is not included.',
+  );
+}
+
+/// Memoized grouped-history view for the Held tabs: regroups (and
+/// re-totals) only when the history list instance or the grouping changes —
+/// not on every build. At 25k rows a regroup costs multiple full passes,
+/// so row expand taps must not pay it. Follows the inventory screen's
+/// identical() memo pattern; the AppState history getters return a stable
+/// instance across rebuilds, which is what makes the identity check work.
+class _GroupedHistoryView {
+  List<TpTransaction>? _history;
+  HistoryGrouping? _grouping;
+  List<HistoryRow>? _rows;
+  int _total = 0;
+
+  /// Grouped rows for [history] under [grouping].
+  List<HistoryRow> rowsFor(List<TpTransaction> history, HistoryGrouping grouping) {
+    _refresh(history, grouping);
+    return _rows!;
+  }
+
+  /// Sum of totalValue over [history].
+  int totalFor(List<TpTransaction> history, HistoryGrouping grouping) {
+    _refresh(history, grouping);
+    return _total;
+  }
+
+  void _refresh(List<TpTransaction> history, HistoryGrouping grouping) {
+    if (identical(history, _history) && grouping == _grouping) return;
+    _history = history;
+    _grouping = grouping;
+    _rows = groupHistory(history, grouping);
+    _total = history.fold<int>(0, (sum, t) => sum + t.totalValue);
+  }
+}
+
+/// Grouped history rows with tap-to-expand subtitles and the 25,000-row cap
 /// footer, as a widget list to spread directly into the tab's ListView.
 /// Shared by the Sold and Bought tabs so both offer the same interface.
 /// (HistoryGrouping lives in app_state.dart.)
 ///
 /// These must stay a flat list, NOT a Column widget: a Column is a single
 /// sliver child and defeats the ListView's lazy building, forcing all rows
-/// (up to 2,000 cards with icons) to build and lay out on every tap — that
+/// (up to 25,000 cards with icons) to build and lay out on every tap — that
 /// is what made the Bought tab's buttons laggy. Spread rows stay lazy.
 List<Widget> _historyRows({
-  required List<TpTransaction> history,
+  required List<HistoryRow> rows,
+  required bool isEmpty,
   required HistoryGrouping grouping,
   required String? expandedRowKey,
   required ValueChanged<String> onToggleRow,
@@ -268,13 +334,8 @@ List<Widget> _historyRows({
   required bool capped,
   required String emptyText,
 }) {
-  final rows = groupHistory(history, grouping);
   return [
-    if (history.isEmpty)
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Center(child: Text(emptyText)),
-      ),
+    if (isEmpty) EmptyState(emptyText),
     for (final row in rows)
       Card(
         margin: const EdgeInsets.only(bottom: 4),
@@ -288,10 +349,10 @@ List<Widget> _historyRows({
         ),
       ),
     if (capped)
-      const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
         child: Center(
-          child: Text('Showing 2,000 Most Recent Transactions'),
+          child: Text('Showing ${_capCountLabel()} Most Recent Transactions'),
         ),
       ),
   ];
@@ -309,75 +370,34 @@ class _SoldTabState extends State<_SoldTab> {
   /// Tapping a row toggles it (single-expanded).
   String? _expandedRowKey;
 
+  /// Memoized grouped view (see [_GroupedHistoryView]).
+  final _view = _GroupedHistoryView();
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final history = state.soldHistory;
     final theme = Theme.of(context);
 
-    final gross = history.fold<int>(0, (sum, t) => sum + t.totalValue);
+    final gross = _view.totalFor(history, state.soldGrouping);
 
     return RefreshIndicator(
       onRefresh: state.refreshAll,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Group By', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 4),
-          SegmentedButton<HistoryGrouping>(
-            segments: const [
-              ButtonSegment(
-                  value: HistoryGrouping.txn, label: Text('By Txn')),
-              ButtonSegment(
-                  value: HistoryGrouping.item, label: Text('By Item')),
-              ButtonSegment(
-                  value: HistoryGrouping.price, label: Text('By Price')),
-            ],
-            selected: {state.soldGrouping},
-            onSelectionChanged: (s) => state.setSoldGrouping(s.first),
-            showSelectedIcon: false,
+          HistoryFilters(
+            grouping: state.soldGrouping,
+            onGroupingChanged: state.setSoldGrouping,
+            range: state.soldRange,
+            onRangeChanged: state.setSoldRange,
           ),
           const SizedBox(height: 8),
-          Text('Range', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 4),
-          HistoryRangeSelector(
-            current: state.soldRange,
-            onChanged: state.setSoldRange,
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Listed Value'),
-                        CoinsText(
-                          gross,
-                          style: theme.textTheme.headlineSmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Net Value'),
-                        CoinsText(
-                          netOfFees(gross),
-                          style: theme.textTheme.headlineSmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          if (state.soldHistoryTruncated)
+            _capWarningTile(state.soldHistoryCoveredSince),
+          ValueTile(
+            labels: const ['Sold Value', 'Net Value'],
+            copperValues: [gross, netOfFees(gross)],
           ),
           Card(
             child: ListTile(
@@ -396,14 +416,15 @@ class _SoldTabState extends State<_SoldTab> {
           ),
           const SizedBox(height: 8),
           ..._historyRows(
-            history: history,
+            rows: _view.rowsFor(history, state.soldGrouping),
+            isEmpty: history.isEmpty,
             grouping: state.soldGrouping,
             expandedRowKey: _expandedRowKey,
             onToggleRow: (key) => setState(
                 () => _expandedRowKey = _expandedRowKey == key ? null : key),
             metaLookup: state.meta.lookup,
             fillsNoun: 'sales',
-            capped: state.soldHistoryCapped,
+            capped: state.soldHistoryTruncated,
             emptyText: 'No recent sales.',
           ),
         ],

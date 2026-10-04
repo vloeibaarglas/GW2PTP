@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../api/permissions.dart';
 import '../../state/app_state.dart';
 import '../widgets/coins_text.dart';
+import '../widgets/notice_banner.dart';
 import '../widgets/stale_banner.dart';
 import 'held_screen.dart';
 import 'inventory_screen.dart';
@@ -77,7 +78,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: Column(
           children: [
             const StaleBanner(),
-            if (app.hasMissingPermissions) _MissingPermissionsBanner(app),
+            if (app.hasMissingPermissions)
+              NoticeBanner(
+                icon: Icons.key_off_outlined,
+                text:
+                    'API key is missing: ${app.missingPermissions.map(displayPermissionName).join(', ')}. '
+                    'Some sections will stay empty — tap for details.',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                ),
+              ),
             Expanded(
               child: IndexedStack(
                 index: _tab,
@@ -111,43 +121,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             label: 'Holdings',
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Warning shown when the API key is missing permissions the app needs.
-/// Tapping opens Settings, where each permission is explained.
-class _MissingPermissionsBanner extends StatelessWidget {
-  final AppState app;
-  const _MissingPermissionsBanner(this.app);
-
-  @override
-  Widget build(BuildContext context) {
-    const fg = Color(0xFF664D03);
-    return InkWell(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const SettingsScreen()),
-      ),
-      child: Container(
-        width: double.infinity,
-        color: const Color(0xFFFFF3CD),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            const Icon(Icons.key_off_outlined, size: 16, color: fg),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'API key is missing: ${app.missingPermissions.map(displayPermissionName).join(', ')}. '
-                'Some sections will stay empty — tap for details.',
-                style: const TextStyle(color: fg, fontSize: 12),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

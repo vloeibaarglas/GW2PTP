@@ -178,6 +178,17 @@ class TpOrder {
       };
 }
 
+/// One page of transaction history plus the API's total page count
+/// (X-Page-Total header), so callers can fetch the remaining pages
+/// greedily instead of walking them one by one. [pageTotal] is -1 when
+/// the header is absent.
+class HistoryPage {
+  final List<Map<String, dynamic>> rows;
+  final int pageTotal;
+
+  const HistoryPage(this.rows, this.pageTotal);
+}
+
 /// One filled transaction from /v2/commerce/transactions/history.
 /// [price] is the per-unit price in copper; [filledAt] prefers `purchased`
 /// (when it filled) and falls back to `created` (when it was listed).

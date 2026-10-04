@@ -54,9 +54,9 @@ abstract class Gw2Api {
   Future<List<TpOrder>> fetchCurrentOrders(String apiKey, String side);
 
   /// Recent transaction history, newest first. [side] is 'buys' or 'sells'.
-  /// Returns raw rows ({id, item_id, price, quantity, ...}) for the
-  /// fill watcher.
-  Future<List<Map<String, dynamic>>> fetchHistory(
+  /// Returns raw rows ({id, item_id, price, quantity, ...}) plus the API's
+  /// total page count, so wide fetches can grab pages concurrently.
+  Future<HistoryPage> fetchHistory(
     String apiKey,
     String side, {
     int page,
@@ -84,7 +84,7 @@ class HttpGw2Api implements Gw2Api {
   Map<String, String> _auth(String apiKey) =>
       {'Authorization': 'Bearer $apiKey', 'Accept': 'application/json'};
 
-  Future<dynamic> _getJson(
+  Future<http.Response> _getResponse(
     String path, {
     Map<String, String>? query,
     String? apiKey,
@@ -110,6 +110,16 @@ class HttpGw2Api implements Gw2Api {
         '$path returned HTTP ${response.statusCode}',
       );
     }
+    return response;
+  }
+
+  Future<dynamic> _getJson(
+    String path, {
+    Map<String, String>? query,
+    String? apiKey,
+  }) async {
+    final response =
+        await _getResponse(path, query: query, apiKey: apiKey);
     try {
       return jsonDecode(response.body);
     } catch (e) {
@@ -347,22 +357,40 @@ class HttpGw2Api implements Gw2Api {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> fetchHistory(
+  Future<HistoryPage> fetchHistory(
     String apiKey,
     String side, {
     int page = 0,
   }) async {
     assert(side == 'buys' || side == 'sells', 'side must be buys or sells');
-    final data = await _getJson(
+    final response = await _getResponse(
       '/v2/commerce/transactions/history/$side',
       query: {'page': '$page', 'page_size': '${Gw2Api.historyPageSize}'},
       apiKey: apiKey,
     );
-    if (data is! List) return [];
-    return [
-      for (final row in data)
-        if (row is Map<String, dynamic>) row
+    dynamic data;
+    try {
+      data = jsonDecode(response.body);
+    } catch (e) {
+      throw Gw2ApiException('Could not parse history response: $e');
+    }
+    final rows = [
+      if (data is List)
+        for (final row in data)
+          if (row is Map<String, dynamic>) row,
     ];
+    return HistoryPage(rows, _pageTotal(response.headers));
+  }
+
+  /// The X-Page-Total response header: how many pages the API holds for
+  /// this query. -1 when absent or unparseable.
+  int _pageTotal(Map<String, String> headers) {
+    for (final entry in headers.entries) {
+      if (entry.key.toLowerCase() == 'x-page-total') {
+        return int.tryParse(entry.value.trim()) ?? -1;
+      }
+    }
+    return -1;
   }
 
   @override
@@ -376,17 +404,23 @@ class HttpGw2Api implements Gw2Api {
     }
     final fetched = await Future.wait(chunks.map((chunk) async {
       final map = <int, ItemMeta>{};
-      final data = await _getJson(
-        '/v2/items',
-        query: {'ids': chunk.join(',')},
-      );
-      if (data is List) {
-        for (final row in data) {
-          if (row is Map<String, dynamic>) {
-            final meta = ItemMeta.fromJson(row);
-            if (meta.id > 0) map[meta.id] = meta;
+      try {
+        final data = await _getJson(
+          '/v2/items',
+          query: {'ids': chunk.join(',')},
+        );
+        if (data is List) {
+          for (final row in data) {
+            if (row is Map<String, dynamic>) {
+              final meta = ItemMeta.fromJson(row);
+              if (meta.id > 0) map[meta.id] = meta;
+            }
           }
         }
+      } catch (_) {
+        // One bad chunk (e.g. a network blip) must not poison the whole
+        // warm: without this, a single failed chunk discards every other
+        // chunk's metadata and name search silently misses those items.
       }
       return map;
     }));

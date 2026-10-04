@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gw2tp/api/gw2_client.dart';
 import 'package:gw2tp/state/app_state.dart';
@@ -74,18 +73,18 @@ void main() {
       expect(state.soldHistory.length, 1);
     });
 
-    test('caps at 10 pages / 2000 transactions', () async {
+    test('caps at 125 pages / 25,000 transactions', () async {
       final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
       final api = FakeGw2Api(
-        // 2,100 rows, 4 minutes apart — all inside 7 days.
+        // 26,000 rows, 1 minute apart — all inside 30 days.
         historySells: historyRows(
-          count: 2100,
+          count: 26000,
           newest: now,
-          spacing: const Duration(minutes: 4),
+          spacing: const Duration(minutes: 1),
         ),
       );
       final state = await makeState(api);
-      await state.setSoldRange(HistoryRange.d7);
+      await state.setSoldRange(HistoryRange.days(30));
       expect(state.soldHistory.length,
           AppState.historyMaxPages * Gw2Api.historyPageSize);
       expect(state.soldHistoryCapped, isTrue);
@@ -151,49 +150,187 @@ void main() {
       expect(state.soldHistory.length, 100);
     });
 
-    test('a capped fetch narrows instantly and drops the footer', () async {
-      final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
-      final api = FakeGw2Api(
-        historySells: historyRows(
-          count: 2100,
-          newest: now,
-          spacing: const Duration(minutes: 4),
-        ),
-      );
-      final state = await makeState(api);
-      await state.setSoldRange(HistoryRange.d7);
-      expect(state.soldHistoryCapped, isTrue);
-      final callsAfterWiden = api.historyFetchCalls;
-
-      await state.setSoldRange(HistoryRange.h1);
-      expect(api.historyFetchCalls, callsAfterWiden);
-      expect(state.soldHistoryCapped, isFalse);
-      expect(state.soldHistory.length, lessThan(2000));
-    });
-
-    test('widening back to 7d after a capped fetch re-fetches and restores the footer',
+    test('a capped fetch narrows instantly; the footer follows coverage',
         () async {
       final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
       final api = FakeGw2Api(
         historySells: historyRows(
-          count: 2100,
+          count: 26000,
           newest: now,
-          spacing: const Duration(minutes: 4),
+          spacing: const Duration(minutes: 1),
         ),
       );
       final state = await makeState(api);
-      await state.setSoldRange(HistoryRange.d7);
+      await state.setSoldRange(HistoryRange.days(30));
+      expect(state.soldHistoryCapped, isTrue);
+      expect(state.soldHistoryTruncated, isTrue);
+      // The tile names this date: the oldest of the 25,000 fetched rows.
+      final expectedOldest = now.subtract(const Duration(minutes: 24999));
+      expect(
+        state.soldHistoryCoveredSince.difference(expectedOldest).abs(),
+        lessThan(const Duration(minutes: 2)),
+      );
+      expect(state.soldHistory.length, 25000);
+      final callsAfterWiden = api.historyFetchCalls;
+
+      // Narrow to 1H: instant, no re-fetch. The capped flag stays (the
+      // cache IS capped), but the 1H window is fully covered so no footer.
+      await state.setSoldRange(HistoryRange.h1);
+      expect(api.historyFetchCalls, callsAfterWiden);
+      expect(state.soldHistoryCapped, isTrue);
+      expect(state.soldHistoryTruncated, isFalse);
+      expect(state.soldHistory.length, lessThan(25000));
+    });
+
+    test('narrowing a capped cache to an uncovered window keeps the footer',
+        () async {
+      final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
+      final api = FakeGw2Api(
+        historySells: historyRows(
+          count: 26000,
+          newest: now,
+          spacing: const Duration(minutes: 1),
+        ),
+      );
+      final state = await makeState(api);
+      // 25,000 cached rows span ~17.4 days — the 30d/20d windows reach far
+      // beyond coverage, so their totals are identical and the footer must
+      // stay to explain why.
+      await state.setSoldRange(HistoryRange.days(30));
+      expect(state.soldHistoryCapped, isTrue);
+      expect(state.soldHistoryTruncated, isTrue);
+
+      final callsAfterWiden = api.historyFetchCalls;
+      await state.setSoldRange(HistoryRange.days(20));
+      expect(api.historyFetchCalls, callsAfterWiden);
+      expect(state.soldHistoryCapped, isTrue);
+      expect(state.soldHistoryTruncated, isTrue);
+      expect(state.soldHistory.length, 25000);
+    });
+
+    test('widening beyond a capped cache re-fetches the remainder', () async {
+      final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
+      final api = FakeGw2Api(
+        historySells: historyRows(
+          count: 26000,
+          newest: now,
+          spacing: const Duration(minutes: 1),
+        ),
+      );
+      final state = await makeState(api);
+      await state.setSoldRange(HistoryRange.days(30));
       expect(state.soldHistoryCapped, isTrue);
 
       await state.setSoldRange(HistoryRange.h1);
-      expect(state.soldHistoryCapped, isFalse);
+      expect(state.soldHistoryCapped, isTrue);
+      expect(state.soldHistoryTruncated, isFalse);
       final callsAfterNarrow = api.historyFetchCalls;
 
-      // The capped cache doesn't cover the full 7d, so widening re-fetches.
-      await state.setSoldRange(HistoryRange.d7);
+      // The capped cache doesn't cover the full 30d, so widening
+      // re-fetches — but the 125-page cap means it re-walks the same
+      // pages and finds nothing new; the oldest ~1,000 rows stay beyond
+      // reach, which is exactly what the warning tile is for.
+      await state.setSoldRange(HistoryRange.days(30));
       expect(api.historyFetchCalls, greaterThan(callsAfterNarrow));
       expect(state.soldHistoryCapped, isTrue);
-      expect(state.soldHistory.length, 2000);
+      expect(state.soldHistoryTruncated, isTrue);
+      expect(state.soldHistory.length, 25000);
+    });
+
+    test('greedy widen fetches remaining pages concurrently in batches',
+        () async {
+      final now = DateTime.now().toUtc().subtract(const Duration(minutes: 5));
+      final api = FakeGw2Api(
+        historySells: historyRows(
+          count: 600,
+          newest: now,
+          spacing: const Duration(minutes: 10),
+        ),
+      );
+      final state = await makeState(api);
+      // Init (24h, sequential): sells page 0 hits the 24h cutoff mid-page,
+      // buys page 0 is empty.
+      expect(api.historyFetchCalls, 2);
+
+      // Delay only the widen so the init stays fast and deterministic.
+      api.historyFetchDelay = const Duration(milliseconds: 20);
+      await state.setSoldRange(HistoryRange.d7);
+      // Greedy: page 0 re-checked, then pages 1-2 go out as one batch.
+      expect(api.historyFetchCalls, 2 + 3);
+      expect(api.maxConcurrentHistoryFetches, 2);
+      // All 600 rows (a ~100h span) fall inside 7d.
+      expect(state.soldHistoryCachedCount, 600);
+      expect(state.soldHistoryCachedItems, 1);
+      expect(state.soldHistoryCapped, isFalse);
+      // The API's 3 pages fit under the cap: full coverage, no truncation.
+      expect(state.soldHistoryCoveredSince.millisecondsSinceEpoch, 0);
+      expect(state.soldHistoryTruncated, isFalse);
+    });
+
+    test('greedy widen throws away the tail past the 25k cap', () async {
+      final now = DateTime.now().toUtc().subtract(const Duration(minutes: 5));
+      final api = FakeGw2Api(
+        historySells: historyRows(
+          count: 30000,
+          newest: now,
+          spacing: const Duration(seconds: 3),
+        ),
+      );
+      final state = await makeState(api);
+      // Init (24h, sequential): 25,000 rows fit inside 24h, so the walk
+      // runs the full 125-page cap (+1 empty buys page).
+      expect(api.historyFetchCalls, 125 + 1);
+      expect(state.soldHistoryCapped, isTrue);
+
+      await state.setSoldRange(HistoryRange.d7);
+      // Greedy re-walks pages 0-124 in batches of 8; the API's pages
+      // 125-149 are never requested.
+      expect(api.historyFetchCalls, 125 + 1 + 125);
+      expect(state.soldHistoryCapped, isTrue);
+      expect(state.soldHistoryTruncated, isTrue);
+      expect(state.soldHistoryCachedCount, 25000);
+    });
+
+    test('soldHistory getter reuses the filtered list across rebuilds', () async {
+      final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
+      final api = FakeGw2Api(
+        historySells: historyRows(count: 240, newest: now),
+      );
+      final state = await makeState(api);
+      // Same instance while the cache and range are unchanged: downstream
+      // grouping can memoize on identity.
+      expect(identical(state.soldHistory, state.soldHistory), isTrue);
+      final before = state.soldHistory;
+
+      // Widening replaces the cache instance, so the view rebuilds.
+      await state.setSoldRange(HistoryRange.d7);
+      expect(identical(before, state.soldHistory), isFalse);
+      expect(identical(state.soldHistory, state.soldHistory), isTrue);
+
+      // Narrowing to a covered window is a pure local filter, but the
+      // range changed, so the view rebuilds too.
+      await state.setSoldRange(HistoryRange.h1);
+      expect(identical(before, state.soldHistory), isFalse);
+    });
+
+    test('cache stats getters report counts, items and span', () async {      final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
+      final api = FakeGw2Api(
+        historySells: historyRows(count: 240, newest: now),
+      );
+      final state = await makeState(api);
+      // 24h window: the cutoff lands on page 0, so 24 rows are cached.
+      expect(state.soldHistoryCachedCount, 24);
+      expect(state.soldHistoryCachedItems, 1);
+      final oldest = state.soldHistoryCachedOldest;
+      final newest = state.soldHistoryCachedNewest;
+      expect(oldest, isNotNull);
+      expect(newest, isNotNull);
+      expect(newest!.difference(oldest!).inHours, 23);
+      // Bought side is empty.
+      expect(state.boughtHistoryCachedCount, 0);
+      expect(state.boughtHistoryCachedItems, 0);
+      expect(state.boughtHistoryCachedOldest, isNull);
+      expect(state.boughtHistoryCachedNewest, isNull);
     });
 
     test('switching beyond the covered window re-fetches', () async {
@@ -315,14 +452,14 @@ void main() {
     });
   });
 
-  testWidgets('Sold tab shows range buttons and the capped footer',
+  testWidgets('Sold tab shows range buttons and the cap warning tile',
       (tester) async {
     final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
     final api = FakeGw2Api(
       historySells: historyRows(
-        count: 2100,
+        count: 26000,
         newest: now,
-        spacing: const Duration(minutes: 4),
+        spacing: const Duration(minutes: 1),
       ),
     );
     await pumpApp(tester, apiKey: 'test-key', api: api);
@@ -333,43 +470,65 @@ void main() {
     await tester.tap(find.text('Sold'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Range'), findsOneWidget);
     for (final label in ['1H', '6H', '24H']) {
       expect(find.text(label), findsOneWidget);
     }
     // Day granularity lives behind the dial button (default range is 24H).
     expect(find.text('Days'), findsOneWidget);
 
-    // Widen to 7D via the dial to trigger the capped 2,000-row fetch.
+    // Widen to 30D via the dial to trigger the capped 25,000-row fetch.
     await tester.tap(find.text('Days'));
     await tester.pumpAndSettle();
-    await tapDialDay(tester, 7);
+    await tapDialDay(tester, 30);
 
-    // Capped at 2,000: the footer is the last child of the Sold tab's list.
-    // The sliver builds rows lazily, so the footer element doesn't exist
-    // until it scrolls into view — drag on the ListView itself, not via
-    // the footer.
-    final footer = find.text('Showing 2,000 Most Recent Transactions');
-    final listView = find.byType(ListView);
-    await tester.dragUntilVisible(
-      footer,
-      listView,
-      const Offset(0, -500),
-      maxIteration: 400,
-    );
-    expect(footer, findsOneWidget);
+    // The warning tile sits directly below the range selector — no
+    // scrolling needed to see it.
+    // The tile now names the earliest date covered; match on the
+    // stable prefix.
+    const tilePrefix = 'Showing the 25,000 most recent transactions, back to';
+    expect(find.textContaining(tilePrefix), findsOneWidget);
 
-    // Scroll back up, then switch to 1H: narrows below the cap and the
-    // footer goes away.
-    await tester.dragUntilVisible(
-      find.text('1H'),
-      listView,
-      const Offset(0, 500),
-      maxIteration: 400,
-    );
+    // Narrow to 1H: the window is fully covered, tile goes away.
     await tester.tap(find.text('1H'));
     await tester.pumpAndSettle();
-    expect(footer, findsNothing);
+    expect(find.textContaining(tilePrefix), findsNothing);
+  });
+
+  testWidgets('narrowing 30D to 20D on a capped cache keeps the warning',
+      (tester) async {
+    final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
+    final api = FakeGw2Api(
+      // 26,000 rows at 1-minute spacing: the capped 25,000 only span
+      // ~17.4 days, so 30D/20D show the same total — the tile must stay
+      // visible to explain why.
+      historySells: historyRows(
+        count: 26000,
+        newest: now,
+        spacing: const Duration(minutes: 1),
+      ),
+    );
+    await pumpApp(tester, apiKey: 'test-key', api: api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Deliveries'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sold'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Days'));
+    await tester.pumpAndSettle();
+    await tapDialDay(tester, 30);
+
+    // The tile now names the earliest date covered; match on the
+    // stable prefix.
+    const tilePrefix = 'Showing the 25,000 most recent transactions, back to';
+    expect(find.textContaining(tilePrefix), findsOneWidget);
+
+    // Narrow 30D -> 20D via the dial: instant local filter, tile stays.
+    await tester.tap(find.text('30D'));
+    await tester.pumpAndSettle();
+    await tapDialDay(tester, 20);
+    expect(find.textContaining(tilePrefix), findsOneWidget);
   });
 
   group('history view preferences persist', () {
@@ -411,6 +570,21 @@ void main() {
       expect(second.soldRange, HistoryRange.d3);
       expect(second.boughtGrouping, HistoryGrouping.price);
       expect(second.boughtRange, HistoryRange.h1);
+    });
+
+    test('bought mode survives an AppState restart', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final api = FakeGw2Api();
+
+      final first = await makeStateWithPrefs(api, prefs);
+      expect(first.boughtMode, BoughtMode.pickup);
+
+      first.setBoughtMode(BoughtMode.history);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      final second = await makeStateWithPrefs(api, prefs);
+      expect(second.boughtMode, BoughtMode.history);
     });
   });
 }

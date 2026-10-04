@@ -65,26 +65,25 @@ void main() {
       expect(state.boughtHistory.length, 24);
     });
 
-    test('buy history caps at 10 pages / 2000 transactions', () async {
+    test('buy history caps at 125 pages / 25,000 transactions', () async {
       final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
       final api = FakeGw2Api(
         historyBuys: buyHistoryRows(
-          count: 2100,
+          count: 26000,
           newest: now,
-          spacing: const Duration(minutes: 4),
+          spacing: const Duration(minutes: 1),
         ),
       );
       final state = await makeBoughtState(api);
-      await state.setBoughtRange(HistoryRange.d7);
-      expect(state.boughtHistory.length, 2000);
+      await state.setBoughtRange(HistoryRange.days(30));
+      expect(state.boughtHistory.length, 25000);
       expect(state.boughtHistoryCapped, isTrue);
     });
   });
 
-  testWidgets('Bought tab mirrors the Sold interface', (tester) async {
+  testWidgets('Bought tab splits pickup and history modes', (tester) async {
     final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
     final api = FakeGw2Api(
-      // Few rows so the delivery section is in the initial viewport.
       historyBuys: buyHistoryRows(count: 3, newest: now),
       delivery: const DeliveryBox(
         coins: 0,
@@ -101,9 +100,26 @@ void main() {
     await tester.tap(find.text('Bought'));
     await tester.pumpAndSettle();
 
-    // Same Group By + Range interface as Sold.
-    expect(find.text('Group By'), findsOneWidget);
-    expect(find.text('Range'), findsOneWidget);
+    // Mode toggle, defaulting to pickup.
+    expect(find.text('Pickup'), findsOneWidget);
+    expect(find.text('History'), findsOneWidget);
+
+    // Pickup mode: the delivery items show, no history rows.
+    expect(find.text('Waiting For Pickup'), findsOneWidget);
+    expect(find.text('×3'), findsOneWidget);
+    expect(find.text('No recent purchases.'), findsNothing);
+
+    // The history controls stay visible but greyed out in pickup mode:
+    // tapping the Days button must not open the dial.
+    await tester.tap(find.text('Days'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('day_dial')), findsNothing);
+
+    // Switch to history mode.
+    await tester.tap(find.text('History'));
+    await tester.pumpAndSettle();
+
+    // Same Group By + Range interface as Sold (compact, no text labels).
     for (final label in ['By Txn', 'By Item', 'By Price']) {
       expect(find.text(label), findsOneWidget);
     }
@@ -113,30 +129,23 @@ void main() {
     // Day granularity lives behind the dial button (default range is 24H).
     expect(find.text('Days'), findsOneWidget);
 
-    // Bought Value tile parallels the Sold tab's Listed Value tile (no net:
+    // Bought Value tile parallels the Sold tab's Sold Value tile (no net:
     // buys pay no Trading Post cut).
     expect(find.text('Bought Value'), findsOneWidget);
 
-    // Delivery box items keep their section below the history.
-    final listView = find.byType(ListView);
-    await tester.dragUntilVisible(
-      find.text('Waiting For Pickup'),
-      listView,
-      const Offset(0, -500),
-      maxIteration: 400,
-    );
-    expect(find.text('Waiting For Pickup'), findsOneWidget);
-    expect(find.text('×3', skipOffstage: false), findsOneWidget);
+    // History mode shows the rows; the pickup section is gone.
+    expect(find.text('Waiting For Pickup'), findsNothing);
+    expect(find.text('×3'), findsNothing);
   });
 
-  testWidgets('Bought tab shows the cap footer and hides it on 1H',
+  testWidgets('Bought tab shows the cap warning tile and hides it on 1H',
       (tester) async {
     final now = DateTime.now().toUtc().subtract(const Duration(minutes: 30));
     final api = FakeGw2Api(
       historyBuys: buyHistoryRows(
-        count: 2100,
+        count: 26000,
         newest: now,
-        spacing: const Duration(minutes: 4),
+        spacing: const Duration(minutes: 1),
       ),
     );
     await pumpApp(tester, apiKey: 'test-key', api: api);
@@ -147,32 +156,26 @@ void main() {
     await tester.tap(find.text('Bought'));
     await tester.pumpAndSettle();
 
-    // Widen to 7D via the dial to trigger the capped 2,000-row fetch.
+    // History mode for the range controls.
+    await tester.tap(find.text('History'));
+    await tester.pumpAndSettle();
+
+    // Widen to 30D via the dial to trigger the capped 25,000-row fetch.
     await tester.tap(find.text('Days'));
     await tester.pumpAndSettle();
-    await tapDialDay(tester, 7);
+    await tapDialDay(tester, 30);
 
-    final footer = find.text('Showing 2,000 Most Recent Transactions');
-    final listView = find.byType(ListView);
-    await tester.dragUntilVisible(
-      footer,
-      listView,
-      const Offset(0, -500),
-      maxIteration: 400,
-    );
-    expect(footer, findsOneWidget);
+    // The warning tile sits directly below the range selector.
+    // The tile now names the earliest date covered; match on the
+    // stable prefix.
+    const tilePrefix = 'Showing the 25,000 most recent transactions, back to';
+    expect(find.textContaining(tilePrefix), findsOneWidget);
 
-    // Narrowing to 1H is a covered instant switch — no re-fetch, footer gone.
+    // Narrowing to 1H is a covered instant switch — no re-fetch, tile gone.
     final callsBefore = api.historyFetchCalls;
-    await tester.dragUntilVisible(
-      find.text('1H'),
-      listView,
-      const Offset(0, 500),
-      maxIteration: 400,
-    );
     await tester.tap(find.text('1H'));
     await tester.pumpAndSettle();
-    expect(footer, findsNothing);
+    expect(find.textContaining(tilePrefix), findsNothing);
     expect(api.historyFetchCalls, callsBefore);
   });
 
@@ -196,6 +199,9 @@ void main() {
     await tester.tap(find.text('Deliveries'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Bought'));
+    await tester.pumpAndSettle();
+    // History mode for the rows.
+    await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
 
     Text subtitle() => tester.widgetList<Text>(find.byType(Text)).firstWhere(

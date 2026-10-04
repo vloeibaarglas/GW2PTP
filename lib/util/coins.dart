@@ -15,7 +15,9 @@ String formatCoins(int copper) {
 
 /// Breaks [copper] into (amount, unit) pairs for rich rendering, e.g.
 /// `[(12, 'g'), (34, 's')]`. Zero parts are omitted except that a zero
-/// value yields `[(0, 'c')]`. The input must be non-negative.
+/// value yields `[(0, 'c')]`. Large gold values shed lower units for
+/// elegance: 5–6 digit gold (≥ 10⁴) drops copper, 7+ digit gold (≥ 10⁶)
+/// drops silver too. The input must be non-negative.
 List<({int amount, String unit})> coinParts(int copper) {
   assert(copper >= 0, 'coinParts takes a non-negative value');
   int rest = copper;
@@ -26,7 +28,9 @@ List<({int amount, String unit})> coinParts(int copper) {
 
   final parts = <({int amount, String unit})>[];
   if (gold > 0) parts.add((amount: gold, unit: 'g'));
+  if (gold >= 1000000) return parts;
   if (silver > 0) parts.add((amount: silver, unit: 's'));
+  if (gold >= 10000) return parts;
   if (bronze > 0 || parts.isEmpty) parts.add((amount: bronze, unit: 'c'));
   return parts;
 }

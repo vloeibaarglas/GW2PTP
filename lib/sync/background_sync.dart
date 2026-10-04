@@ -67,7 +67,7 @@ Future<void> runSyncTick() async {
         for (final side in const ['buys', 'sells']) {
           List<Map<String, dynamic>> history;
           try {
-            history = await api.fetchHistory(apiKey, side);
+            history = (await api.fetchHistory(apiKey, side)).rows;
           } catch (e) {
             outcome = 'history $side failed: ${_shortTickError(e)}';
             continue;

@@ -7,8 +7,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../api/permissions.dart';
+import '../../build_tag.dart';
 import '../../state/app_state.dart';
 import '../../store/sync_settings.dart';
+import '../../util/clock_time.dart';
+import '../../util/day_label.dart';
+import '../../util/numbers.dart';
+import '../../util/time_ago.dart';
 
 class SettingsScreen extends StatefulWidget {
   /// When true the screen is the first-run gate: no back navigation until
@@ -354,6 +359,53 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
             ),
+            _sectionTitle(context, 'Cached Data'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _HistoryCacheStat(
+                      title: 'Sold History',
+                      count: state.soldHistoryCachedCount,
+                      items: state.soldHistoryCachedItems,
+                      oldest: state.soldHistoryCachedOldest,
+                      newest: state.soldHistoryCachedNewest,
+                      synced: state.soldHistoryFetchedAt,
+                      capped: state.soldHistoryCapped,
+                    ),
+                    const SizedBox(height: 12),
+                    _HistoryCacheStat(
+                      title: 'Bought History',
+                      count: state.boughtHistoryCachedCount,
+                      items: state.boughtHistoryCachedItems,
+                      oldest: state.boughtHistoryCachedOldest,
+                      newest: state.boughtHistoryCachedNewest,
+                      synced: state.boughtHistoryFetchedAt,
+                      capped: state.boughtHistoryCapped,
+                    ),
+                    const Divider(height: 24),
+                    _simpleCacheStat('Listings',
+                        '${state.sells.length} sells · ${state.buys.length} buys'),
+                    const SizedBox(height: 8),
+                    _simpleCacheStat(
+                        'Inventory', '${state.inventory.length} stacks'),
+                    const SizedBox(height: 8),
+                    _simpleCacheStat('Delivery',
+                        '${state.delivery.items.length} items waiting'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Center(
+              child: Text(
+                'Build $buildTag',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -519,4 +571,86 @@ class _IntervalSliderState extends State<_IntervalSlider> {
       ],
     );
   }
+}
+
+/// One cached-history block in the Settings "Cached Data" section:
+/// transaction and distinct-item counts, the date span covered, the
+/// newest fill timestamp, and when the cache was last synced.
+class _HistoryCacheStat extends StatelessWidget {
+  final String title;
+  final int count;
+  final int items;
+  final DateTime? oldest;
+  final DateTime? newest;
+  final DateTime synced;
+
+  /// Whether the cache hit the 25,000-transaction cap: shown as
+  /// "(capped)" after the transaction count.
+  final bool capped;
+
+  const _HistoryCacheStat({
+    required this.title,
+    required this.count,
+    required this.items,
+    required this.oldest,
+    required this.newest,
+    required this.synced,
+    this.capped = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final sub = Theme.of(context).textTheme.bodySmall;
+    // Locals so the null check below promotes the types.
+    final oldest = this.oldest;
+    final newest = this.newest;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        if (count == 0 || oldest == null || newest == null)
+          Text('No data yet', style: sub)
+        else ...[
+          Text(
+              '${commas(count)} transactions${capped ? ' (capped)' : ''} · '
+              '${commas(items)} items',
+              style: sub),
+          Text(
+              '${dayLabel(oldest)} → ${dayLabel(newest)} · ${_daySpan(oldest, newest)}',
+              style: sub),
+          Text(
+              'Newest fill ${formatClockTime(newest)} · ${_syncedLabel(synced)}',
+              style: sub),
+        ],
+      ],
+    );
+  }
+}
+
+/// One-line cache stat: a label plus its value.
+Widget _simpleCacheStat(String title, String value) {
+  return Row(
+    children: [
+      Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          value,
+          textAlign: TextAlign.right,
+        ),
+      ),
+    ],
+  );
+}
+/// "18 days" between two timestamps.
+String _daySpan(DateTime oldest, DateTime newest) {
+  final days = newest.difference(oldest).inDays;
+  if (days < 1) return 'Less than a day';
+  return days == 1 ? '1 day' : '$days days';
+}
+
+String _syncedLabel(DateTime synced) {
+  if (synced.millisecondsSinceEpoch == 0) return 'Never synced';
+  return 'Synced ${timeAgo(synced)}';
 }

@@ -26,5 +26,15 @@ void main() {
       expect(formatClockTime(midnight), '12:05 AM');
       expect(formatClockTime(noon), '12:05 PM');
     });
+
+    test('UTC input renders in device-local time', () {
+      // The API hands us UTC timestamps; the display contract is local.
+      final utc = DateTime.utc(2026, 10, 3, 18, 42);
+      expect(formatClockTime(utc), formatClockTime(utc.toLocal()));
+      final local = utc.toLocal();
+      final hour12 = local.hour % 12 == 0 ? 12 : local.hour % 12;
+      final ampm = local.hour < 12 ? 'AM' : 'PM';
+      expect(formatClockTime(utc), contains('$hour12:42 $ampm'));
+    });
   });
 }

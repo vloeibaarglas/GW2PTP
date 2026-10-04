@@ -102,6 +102,12 @@ class HistoryRange {
 /// per (item, price) point.
 enum HistoryGrouping { txn, item, price }
 
+/// The Bought tab's view mode: items waiting in the delivery box (pickup)
+/// vs. the historical purchase record (history). The range/group controls
+/// only apply to the history — in pickup mode they render greyed out and
+/// uninteractable.
+enum BoughtMode { pickup, history }
+
 /// How open listings are grouped: every order, one row per item
 /// (weighted-average price), or one row per (item, price) point.
 enum OrderGrouping {
@@ -201,8 +207,23 @@ class AppState extends ChangeNotifier {
   final Set<int> _seenSoldIds = {};
 
   /// Recently filled sell transactions, newest first, filtered to [soldRange].
-  List<TpTransaction> get soldHistory =>
-      _inWindow(_soldHistoryCache, soldRange.window);
+  ///
+  /// Memoized: the filtered list is rebuilt only when the cache instance
+  /// or [soldRange] changes. Builds (e.g. row expand taps) reuse the same
+  /// instance, so downstream grouping can memoize on identity too.
+  List<TpTransaction>? _soldHistoryView;
+  List<TpTransaction>? _soldHistoryViewSource;
+  HistoryRange? _soldHistoryViewRange;
+
+  List<TpTransaction> get soldHistory {
+    if (!identical(_soldHistoryViewSource, _soldHistoryCache) ||
+        _soldHistoryViewRange != soldRange) {
+      _soldHistoryViewSource = _soldHistoryCache;
+      _soldHistoryViewRange = soldRange;
+      _soldHistoryView = _inWindow(_soldHistoryCache, soldRange.window);
+    }
+    return _soldHistoryView!;
+  }
 
   /// All fetched buy transactions (newest first), covering back to
   /// [boughtHistoryCoveredSince].
@@ -212,12 +233,59 @@ class AppState extends ChangeNotifier {
   final Set<int> _seenBoughtIds = {};
 
   /// Recently filled buy transactions, newest first, filtered to [boughtRange].
-  List<TpTransaction> get boughtHistory =>
-      _inWindow(_boughtHistoryCache, boughtRange.window);
+  ///
+  /// Memoized like [soldHistory]: rebuilt only when the cache instance or
+  /// [boughtRange] changes.
+  List<TpTransaction>? _boughtHistoryView;
+  List<TpTransaction>? _boughtHistoryViewSource;
+  HistoryRange? _boughtHistoryViewRange;
 
-  /// Maximum history pages fetched per sync (200 rows each, so 2,000
+  List<TpTransaction> get boughtHistory {
+    if (!identical(_boughtHistoryViewSource, _boughtHistoryCache) ||
+        _boughtHistoryViewRange != boughtRange) {
+      _boughtHistoryViewSource = _boughtHistoryCache;
+      _boughtHistoryViewRange = boughtRange;
+      _boughtHistoryView = _inWindow(_boughtHistoryCache, boughtRange.window);
+    }
+    return _boughtHistoryView!;
+  }
+
+  /// Cache stats for the Settings screen: what the app currently holds.
+  int get soldHistoryCachedCount => _soldHistoryCache.length;
+  int get boughtHistoryCachedCount => _boughtHistoryCache.length;
+
+  /// Distinct items in the cached histories.
+  int get soldHistoryCachedItems =>
+      _soldHistoryCache.map((t) => t.itemId).toSet().length;
+  int get boughtHistoryCachedItems =>
+      _boughtHistoryCache.map((t) => t.itemId).toSet().length;
+
+  /// Oldest / newest fill timestamps in the cached histories
+  /// (null when empty).
+  DateTime? get soldHistoryCachedOldest => _extremeFill(_soldHistoryCache, true);
+  DateTime? get soldHistoryCachedNewest =>
+      _extremeFill(_soldHistoryCache, false);
+  DateTime? get boughtHistoryCachedOldest =>
+      _extremeFill(_boughtHistoryCache, true);
+  DateTime? get boughtHistoryCachedNewest =>
+      _extremeFill(_boughtHistoryCache, false);
+
+  DateTime? _extremeFill(List<TpTransaction> rows, bool oldest) {
+    DateTime? extreme;
+    for (final t in rows) {
+      final ft = t.filledAt;
+      if (ft == null) continue;
+      if (extreme == null ||
+          (oldest ? ft.isBefore(extreme) : ft.isAfter(extreme))) {
+        extreme = ft;
+      }
+    }
+    return extreme;
+  }
+
+  /// Maximum history pages fetched per sync (200 rows each, so 25,000
   /// transactions). The lookback either history tab can ever show.
-  static const historyMaxPages = 10;
+  static const historyMaxPages = 125;
 
   /// The time window the Sold tab shows. Persisted; defaults to 24h.
   HistoryRange soldRange = HistoryRange.h24;
@@ -231,6 +299,10 @@ class AppState extends ChangeNotifier {
   /// How the Bought tab groups history rows. Persisted; defaults to By Txn.
   HistoryGrouping boughtGrouping = HistoryGrouping.txn;
 
+  /// Whether the Bought tab shows the delivery-box pickup view or the
+  /// purchase history. Persisted; defaults to pickup.
+  BoughtMode boughtMode = BoughtMode.pickup;
+
   /// How the Listings > Selling tab groups open orders.
   /// Persisted; defaults to By Order.
   OrderGrouping sellingGrouping = OrderGrouping.order;
@@ -240,7 +312,7 @@ class AppState extends ChangeNotifier {
   OrderGrouping buyingGrouping = OrderGrouping.order;
 
   /// True when the last sale-history fetch hit [historyMaxPages] with a
-  /// full final page — older transactions may exist beyond the 2,000 shown.
+  /// full final page — older transactions may exist beyond the 25,000 shown.
   bool soldHistoryCapped = false;
 
   /// True when the last buy-history fetch hit [historyMaxPages] with a
@@ -251,6 +323,20 @@ class AppState extends ChangeNotifier {
   /// newest-first and contiguous, so everything from here to now is present.
   DateTime soldHistoryCoveredSince = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime boughtHistoryCoveredSince = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// True when the Sold tab should show the "Showing 25,000 Most Recent
+  /// Transactions" footer: the fetch hit the page cap AND the current
+  /// window reaches beyond what the cache covers. A capped cache narrowed
+  /// to a fully-covered window (e.g. 1H) shows no footer — that view is
+  /// complete, even though older transactions exist outside it.
+  bool get soldHistoryTruncated =>
+      soldHistoryCapped &&
+      !_coversWindow(soldHistoryCoveredSince, soldRange.window);
+
+  /// Same for the Bought tab.
+  bool get boughtHistoryTruncated =>
+      boughtHistoryCapped &&
+      !_coversWindow(boughtHistoryCoveredSince, boughtRange.window);
 
   /// When the histories were last fetched. Informational — range switches
   /// never consult it; only explicit refresh/sync updates the cache.
@@ -439,7 +525,7 @@ class AppState extends ChangeNotifier {
     final key = _apiKey;
     if (key == null) return;
     if (status == LoadStatus.loading) return;
-    status = LoadStatus.loading;
+    _beginSync();
     errorMessage = null;
     sectionNotice = null;
     invalidKey = false;
@@ -472,8 +558,10 @@ class AppState extends ChangeNotifier {
         guard('sell orders', () async {
           sells = await _api.fetchCurrentOrders(key, 'sells');
         }),
-        guard('sale history', () => _syncSoldHistory(key)),
-        guard('purchase history', () => _syncBoughtHistory(key)),
+        guard('sale history',
+            () => _serializedHistorySync('sells', () => _syncSoldHistory(key), queue: false)),
+        guard('purchase history',
+            () => _serializedHistorySync('buys', () => _syncBoughtHistory(key), queue: false)),
         guard('inventory', () async {
           inventory = await _api.fetchInventory(key);
         }),
@@ -497,7 +585,7 @@ class AppState extends ChangeNotifier {
 
         await settings.setLastSyncAtMs(DateTime.now().millisecondsSinceEpoch);
         await _saveCache();
-        status = LoadStatus.loaded;
+        // status flips to loaded via _endSync below.
         if (failures.isNotEmpty) {
           sectionNotice = "Couldn't load: ${failures.join(', ')}.";
         }
@@ -510,7 +598,7 @@ class AppState extends ChangeNotifier {
       status = LoadStatus.error;
       errorMessage = 'Sync failed: ${_shortError(e)}';
     }
-    notifyListeners();
+    _endSync();
   }
 
   /// One paged history fetch, incremental: rows already in [existing]
@@ -530,6 +618,10 @@ class AppState extends ChangeNotifier {
   ///
   /// [coveredSince] is the earliest time fully covered — the fetch ran
   /// newest-first and contiguous from now back to here.
+  ///
+  /// Widening (stopAtKnown false) uses the greedy concurrent walk
+  /// ([_loadHistoryGreedy]); refreshes stay sequential so they stop at the
+  /// first fully-known page with the fewest API calls.
   Future<_HistoryFetch> _loadHistory(
     String key,
     String side,
@@ -540,13 +632,23 @@ class AppState extends ChangeNotifier {
     required bool prevCapped,
     required DateTime prevCoveredSince,
   }) async {
+    if (!stopAtKnown) {
+      return _loadHistoryGreedy(
+        key,
+        side,
+        window,
+        existing: existing,
+        seenIds: seenIds,
+      );
+    }
     final cutoff = DateTime.now().subtract(window);
     final fresh = <TpTransaction>[];
     var capped = false;
     var reachedCutoff = false;
     var stoppedAtKnown = false;
     for (var page = 0; page < historyMaxPages; page++) {
-      final data = await _api.fetchHistory(key, side, page: page);
+      final fetched = await _api.fetchHistory(key, side, page: page);
+      final data = fetched.rows;
       if (data.isEmpty) break;
       var pageAllKnown = true;
       var pageHitCutoff = false;
@@ -581,7 +683,7 @@ class AppState extends ChangeNotifier {
       return _HistoryFetch(rows, false, cutoff);
     }
     if (capped) {
-      // Hit the 10-page cap: coverage ends at the oldest row we hold.
+      // Hit the page cap: coverage ends at the oldest row we hold.
       DateTime? oldest;
       for (final t in rows) {
         final ft = t.filledAt;
@@ -594,6 +696,111 @@ class AppState extends ChangeNotifier {
     if (stoppedAtKnown) {
       // Nothing new beyond what we hold: prior coverage still stands.
       return _HistoryFetch(rows, prevCapped, prevCoveredSince);
+    }
+    // Walked the API to exhaustion without hitting the cutoff: we hold
+    // every transaction that exists.
+    return _HistoryFetch(rows, false, DateTime.fromMillisecondsSinceEpoch(0));
+  }
+
+  /// Greedy concurrent walk for range widening. Page 0 goes out first to
+  /// learn the API's total page count (X-Page-Total); the remaining pages
+  /// then go out in concurrent batches of 8. Pages are still processed
+  /// newest-first, so the window cutoff and the 25k cap behave exactly like
+  /// the sequential walk — once the cutoff is reached no further batches
+  /// are issued and the unfetched tail is thrown away. A 125-page widen
+  /// drops from ~125 round trips to ~16.
+  Future<_HistoryFetch> _loadHistoryGreedy(
+    String key,
+    String side,
+    Duration window, {
+    required List<TpTransaction> existing,
+    required Set<int> seenIds,
+  }) async {
+    final cutoff = DateTime.now().subtract(window);
+    final fresh = <TpTransaction>[];
+    var reachedCutoff = false;
+    var stoppedShort = false;
+    var lastPageFull = false;
+
+    // Processes one page's rows newest-first. Returns true when the walk
+    // should stop after this page (cutoff hit, or the page came back
+    // short/empty so the API is exhausted).
+    bool processPage(HistoryPage page) {
+      lastPageFull =
+          page.rows.isNotEmpty && page.rows.length >= Gw2Api.historyPageSize;
+      if (page.rows.isEmpty) {
+        stoppedShort = true;
+        return true;
+      }
+      for (final row in page.rows) {
+        final t = TpTransaction.fromJson(row);
+        if (t.id <= 0 || t.itemId <= 0) continue;
+        if (seenIds.contains(t.id)) continue; // already cached: skip
+        if (t.filledAt != null && t.filledAt!.isBefore(cutoff)) {
+          // Older than the window — and older than anything a later
+          // widen could want from this walk, so don't mark it seen.
+          reachedCutoff = true;
+          return true;
+        }
+        seenIds.add(t.id);
+        fresh.add(t);
+      }
+      if (!lastPageFull) stoppedShort = true;
+      return !lastPageFull;
+    }
+
+    final first = await _api.fetchHistory(key, side, page: 0);
+    final totalPages = first.pageTotal;
+    var stop = processPage(first);
+    var pagesFetched = 1;
+    // How many pages to fetch at most: the API's total when known,
+    // otherwise the local cap — the tail past the cap is thrown away.
+    final fetchPages = totalPages > 0
+        ? totalPages.clamp(1, historyMaxPages)
+        : historyMaxPages;
+    const batchSize = 8;
+    for (var start = 1; start < fetchPages && !stop; start += batchSize) {
+      final end = (start + batchSize).clamp(0, fetchPages);
+      final pages = await Future.wait([
+        for (var p = start; p < end; p++) _api.fetchHistory(key, side, page: p),
+      ]);
+      for (final pg in pages) {
+        pagesFetched++;
+        if (processPage(pg)) {
+          stop = true;
+          break;
+        }
+      }
+    }
+
+    final rows = _mergeHistory(existing, fresh);
+    if (reachedCutoff) {
+      return _HistoryFetch(rows, false, cutoff);
+    }
+    var capped = false;
+    if (!stoppedShort) {
+      if (totalPages > historyMaxPages) {
+        // The API holds more than the cap: the tail past the cap is
+        // deliberately thrown away.
+        capped = true;
+      } else if (totalPages < 0 &&
+          pagesFetched >= historyMaxPages &&
+          lastPageFull) {
+        // No total from the API and the walk ran the full cap with a
+        // full last page: more may exist past it.
+        capped = true;
+      }
+    }
+    if (capped) {
+      // Hit the page cap: coverage ends at the oldest row we hold.
+      DateTime? oldest;
+      for (final t in rows) {
+        final ft = t.filledAt;
+        if (ft != null && (oldest == null || ft.isBefore(oldest))) {
+          oldest = ft;
+        }
+      }
+      return _HistoryFetch(rows, true, oldest ?? cutoff);
     }
     // Walked the API to exhaustion without hitting the cutoff: we hold
     // every transaction that exists.
@@ -689,6 +896,10 @@ class AppState extends ChangeNotifier {
     boughtGrouping =
         parseGrouping(settings.historyViewPref('bought_grouping', 'txn'));
     boughtRange = parseRange(settings.historyViewPref('bought_range', 'h24'));
+    boughtMode =
+        settings.historyViewPref('bought_mode', 'pickup') == 'history'
+            ? BoughtMode.history
+            : BoughtMode.pickup;
     OrderGrouping parseOrderGrouping(String raw) => OrderGrouping.values
         .firstWhere((g) => g.name == raw, orElse: () => OrderGrouping.order);
     sellingGrouping = parseOrderGrouping(
@@ -710,6 +921,15 @@ class AppState extends ChangeNotifier {
     if (grouping == boughtGrouping) return;
     boughtGrouping = grouping;
     settings.setHistoryViewPref('bought_grouping', grouping.name);
+    notifyListeners();
+  }
+
+  /// Switches the Bought tab between the pickup view and the purchase
+  /// history, persisting the choice.
+  void setBoughtMode(BoughtMode mode) {
+    if (mode == boughtMode) return;
+    boughtMode = mode;
+    settings.setHistoryViewPref('bought_mode', mode.name);
     notifyListeners();
   }
 
@@ -740,8 +960,9 @@ class AppState extends ChangeNotifier {
     soldRange = range;
     if (_soldHistoryCache.isNotEmpty &&
         (!widening || _coversWindow(soldHistoryCoveredSince, range.window))) {
-      // The filtered view is complete for this window — nothing truncated.
-      soldHistoryCapped = false;
+      // Pure local filter. The capped flag stays as the fetch left it —
+      // the footer derives from it (see soldHistoryTruncated), so a capped
+      // cache narrowed to a window it doesn't cover keeps its footer.
       notifyListeners();
       return;
     }
@@ -758,7 +979,10 @@ class AppState extends ChangeNotifier {
     boughtRange = range;
     if (_boughtHistoryCache.isNotEmpty &&
         (!widening || _coversWindow(boughtHistoryCoveredSince, range.window))) {
-      boughtHistoryCapped = false;
+      // Pure local filter. The capped flag stays as the fetch left it —
+      // the footer derives from it (see boughtHistoryTruncated), so a
+      // capped cache narrowed to a window it doesn't cover keeps its
+      // footer.
       notifyListeners();
       return;
     }
@@ -766,47 +990,135 @@ class AppState extends ChangeNotifier {
     await refreshBoughtHistory(stopAtKnown: !widening);
   }
 
-  /// Re-fetches only the sale history (e.g. after the range changes),
-  /// warming item metadata for any newly seen items. Incremental: pages
-  /// holding only already-cached transactions end the walk early.
-  Future<void> refreshSoldHistory({bool stopAtKnown = true}) async {
-    final key = _apiKey;
-    if (key == null || status == LoadStatus.loading) return;
+  /// Syncs currently in flight (the full refresh and/or section syncs).
+  /// The banner shows loading while this is nonzero; it also gates
+  /// refreshAll so full refreshes never stack. Invariant: status is
+  /// [LoadStatus.loading] iff this is nonzero (errors set it explicitly
+  /// and [_endSync] never clobbers them).
+  int _inflightSyncs = 0;
+
+  void _beginSync() {
+    _inflightSyncs++;
     status = LoadStatus.loading;
     notifyListeners();
-    try {
-      await _syncSoldHistory(key, stopAtKnown: stopAtKnown);
-      await meta.warm(
-        {for (final t in soldHistory) t.itemId},
-        _api.fetchItemMeta,
-      );
-      status = LoadStatus.loaded;
-    } catch (_) {
-      // Keep the previously loaded history on a failed range switch.
+  }
+
+  void _endSync() {
+    _inflightSyncs = (_inflightSyncs - 1).clamp(0, 1 << 30);
+    // Flip back to loaded only when nothing is still running, and never
+    // clobber an error set by a failed full refresh.
+    if (_inflightSyncs == 0 && status == LoadStatus.loading) {
       status = LoadStatus.loaded;
     }
     notifyListeners();
   }
 
+  /// In-flight history sync per side. A new request for a side that's
+  /// already syncing queues behind it instead of overlapping: two
+  /// overlapping walks would interleave seenIds and the last writer would
+  /// drop the other's rows. Sold and bought use separate entries, so
+  /// widening one tab never blocks or cancels the other. Queued syncs are
+  /// plain chained futures — minimizing the app doesn't cancel them.
+  final Map<String, Future<void>?> _historySyncs = {
+    'sells': null,
+    'buys': null,
+  };
+
+  /// Runs [job] serialized per history [side]. When [queue] is true (user
+  /// actions like a range widen), waits for any in-flight sync for the
+  /// side, then runs; when false (the full refresh), skips while a section
+  /// sync owns the side — its rows are being fetched anyway.
+  Future<void> _serializedHistorySync(
+    String side,
+    Future<void> Function() job, {
+    bool queue = true,
+  }) async {
+    while (true) {
+      final inFlight = _historySyncs[side];
+      if (inFlight == null) break;
+      if (!queue) return;
+      try {
+        await inFlight;
+      } catch (_) {}
+    }
+    final future = job();
+    _historySyncs[side] = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_historySyncs[side], future)) {
+        _historySyncs[side] = null;
+      }
+    }
+  }
+
+  /// Re-fetches only the sale history (e.g. after the range changes),
+  /// warming item metadata for any newly seen items. Incremental: pages
+  /// holding only already-cached transactions end the walk early.
+  /// Independent of the buy-side sync: widening one tab never blocks or
+  /// cancels the other.
+  Future<void> refreshSoldHistory({bool stopAtKnown = true}) async {
+    final key = _apiKey;
+    if (key == null) return;
+    await _serializedHistorySync(
+      'sells',
+      () => _doSoldHistorySync(key, stopAtKnown),
+    );
+  }
+
+  /// Body of [refreshSoldHistory]: runs inside the per-side queue.
+  Future<void> _doSoldHistorySync(String key, bool stopAtKnown) async {
+    _beginSync();
+    try {
+      final before = _soldHistoryCache.length;
+      await _syncSoldHistory(key, stopAtKnown: stopAtKnown);
+      if (_soldHistoryCache.length != before) {
+        // The cache grew (widen or new fills): persist it. refreshAll
+        // saves at its end; section syncs must save their own growth, or
+        // a process death loses the widened rows and the next open has
+        // to fetch them again.
+        await _saveCache();
+      }
+      await meta.warm(
+        {for (final t in soldHistory) t.itemId},
+        _api.fetchItemMeta,
+      );
+    } catch (_) {
+      // Keep the previously loaded history on a failed range switch.
+    }
+    _endSync();
+  }
+
   /// Re-fetches only the buy history, warming item metadata for any newly
-  /// seen items (same incremental semantics as [refreshSoldHistory]).
+  /// seen items (same independent per-side semantics as
+  /// [refreshSoldHistory]).
   Future<void> refreshBoughtHistory({bool stopAtKnown = true}) async {
     final key = _apiKey;
-    if (key == null || status == LoadStatus.loading) return;
-    status = LoadStatus.loading;
-    notifyListeners();
+    if (key == null) return;
+    await _serializedHistorySync(
+      'buys',
+      () => _doBoughtHistorySync(key, stopAtKnown),
+    );
+  }
+
+  /// Body of [refreshBoughtHistory]: runs inside the per-side queue.
+  Future<void> _doBoughtHistorySync(String key, bool stopAtKnown) async {
+    _beginSync();
     try {
+      final before = _boughtHistoryCache.length;
       await _syncBoughtHistory(key, stopAtKnown: stopAtKnown);
+      if (_boughtHistoryCache.length != before) {
+        // See [_doSoldHistorySync]: persist widened rows.
+        await _saveCache();
+      }
       await meta.warm(
         {for (final t in boughtHistory) t.itemId},
         _api.fetchItemMeta,
       );
-      status = LoadStatus.loaded;
     } catch (_) {
       // Keep the previously loaded history on a failed range switch.
-      status = LoadStatus.loaded;
     }
-    notifyListeners();
+    _endSync();
   }
 
   /// Validates [key] against the API before storing it, and records which
@@ -854,6 +1166,7 @@ class AppState extends ChangeNotifier {
     soldHistoryFetchedAt = DateTime.fromMillisecondsSinceEpoch(0);
     boughtHistoryFetchedAt = DateTime.fromMillisecondsSinceEpoch(0);
     inventory = [];
+    _inflightSyncs = 0;
     status = LoadStatus.idle;
     errorMessage = null;
     sectionNotice = null;

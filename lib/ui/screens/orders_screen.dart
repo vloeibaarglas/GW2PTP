@@ -11,8 +11,12 @@ import 'package:provider/provider.dart';
 import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../../util/coins.dart';
+import '../../util/collections.dart';
 import '../widgets/coins_text.dart';
+import '../widgets/compact_group_by.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/item_tile.dart';
+import '../widgets/value_tile.dart';
 
 class OrdersScreen extends StatelessWidget {
   const OrdersScreen({super.key});
@@ -54,7 +58,6 @@ class _OrderList extends StatelessWidget {
         side == 'buy' ? state.buyingGrouping : state.sellingGrouping;
     final setGrouping =
         side == 'buy' ? state.setBuyingGrouping : state.setSellingGrouping;
-    final theme = Theme.of(context);
 
     final total = orders.fold<int>(0, (sum, o) => sum + o.totalValue);
     final rows = groupOrders(orders, grouping);
@@ -64,64 +67,27 @@ class _OrderList extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Group By', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 4),
-          SegmentedButton<OrderGrouping>(
-            segments: [
-              for (final g in OrderGrouping.values)
-                ButtonSegment(value: g, label: Text(g.label)),
-            ],
-            selected: {grouping},
-            onSelectionChanged: (s) => setGrouping(s.first),
-            showSelectedIcon: false,
+          CompactGroupBy<OrderGrouping>(
+            values: OrderGrouping.values,
+            labelOf: (g) => g.label,
+            selected: grouping,
+            onChanged: setGrouping,
           ),
           const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(side == 'buy' ? 'Order Value' : 'Listed Value'),
-                        CoinsText(
-                          total,
-                          style: theme.textTheme.headlineSmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (side == 'sell')
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Net Value'),
-                          CoinsText(
-                            netOfFees(total),
-                            style: theme.textTheme.headlineSmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
+          ValueTile(
+            labels: [
+              side == 'buy' ? 'Order Value' : 'Listed Value',
+              if (side == 'sell') 'Net Value',
+            ],
+            copperValues: [
+              total,
+              if (side == 'sell') netOfFees(total),
+            ],
           ),
           const SizedBox(height: 8),
           if (orders.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Text(
-                  side == 'buy'
-                      ? 'No open buy orders.'
-                      : 'No open sell orders.',
-                ),
-              ),
+            EmptyState(
+              side == 'buy' ? 'No open buy orders.' : 'No open sell orders.',
             ),
           for (final row in rows)
             Card(
@@ -211,16 +177,10 @@ List<OrderRow> groupOrders(List<TpOrder> orders, OrderGrouping mode) {
           ),
       ];
     case OrderGrouping.price:
-      final byKey = <String, List<TpOrder>>{};
-      for (final o in orders) {
-        byKey.putIfAbsent('${o.itemId}@${o.price}', () => []).add(o);
-      }
+      final byKey = groupByKey(orders, (o) => '${o.itemId}@${o.price}');
       return [for (final g in byKey.values) collapse(g)];
     case OrderGrouping.item:
-      final byItem = <int, List<TpOrder>>{};
-      for (final o in orders) {
-        byItem.putIfAbsent(o.itemId, () => []).add(o);
-      }
+      final byItem = groupByKey(orders, (o) => o.itemId);
       return [for (final g in byItem.values) collapse(g)];
   }
 }

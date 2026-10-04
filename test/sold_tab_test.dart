@@ -112,7 +112,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Header totals: 2 × 150c = 300c listed, net 255c; 500c waiting.
-    expect(find.text('Listed Value'), findsOneWidget);
+    expect(find.text('Sold Value'), findsOneWidget);
     expect(find.text('Net Value'), findsOneWidget);
     expect(find.text('Coins Waiting For Pickup'), findsOneWidget);
     // Coin values render as rich text with colored unit spans.
