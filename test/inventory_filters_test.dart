@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gw2tp/api/models.dart';
 import 'package:gw2tp/ui/screens/inventory_screen.dart';
+import 'package:gw2tp/ui/widgets/inventory_filters.dart';
 
 ItemMeta _meta({
   int id = 1,
@@ -162,6 +163,19 @@ void main() {
       expect(
           inventoryEntryMatches(e, namedLookup, query: 'blossom'),
           isFalse);
+    });
+  });
+  group('humanizeItemType', () {
+    test('splits camelCase API types into words', () {
+      expect(humanizeItemType('UpgradeComponent'), 'Upgrade Component');
+      expect(humanizeItemType('CraftingMaterial'), 'Crafting Material');
+      expect(humanizeItemType('MiniPet'), 'Mini Pet');
+    });
+
+    test('leaves single-word types unchanged', () {
+      expect(humanizeItemType('Weapon'), 'Weapon');
+      expect(humanizeItemType('Armor'), 'Armor');
+      expect(humanizeItemType(''), '');
     });
   });
 }

@@ -22,6 +22,12 @@ const List<String> rarityOrder = [
 
 String _triLabel(bool? v) => v == null ? 'All' : (v ? 'Yes' : 'No');
 
+/// Human-readable label for a GW2 API item type: "UpgradeComponent" becomes
+/// "Upgrade Component". Only the display label is changed — filtering still
+/// uses the raw API value.
+String humanizeItemType(String type) =>
+    type.replaceAllMapped(RegExp(r'(?<=[a-z])(?=[A-Z])'), (_) => ' ');
+
 class InventoryFilters extends StatelessWidget {
   final List<String> types;
   final List<String> rarities;
@@ -70,7 +76,7 @@ class InventoryFilters extends StatelessWidget {
                     child: Text('Type: All'),
                   ),
                   for (final t in types)
-                    DropdownMenuItem<String?>(value: t, child: Text(t)),
+                    DropdownMenuItem<String?>(value: t, child: Text(humanizeItemType(t))),
                 ],
                 onChanged: onTypeChanged,
               ),
