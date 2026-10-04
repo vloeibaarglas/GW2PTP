@@ -268,11 +268,15 @@ class HttpGw2Api implements Gw2Api {
     String name,
   ) async {
     final entries = <InventoryEntry>[];
-    final encoded = Uri.encodeComponent(name);
+    // Do NOT pre-encode the name: _getJson builds the URI with Uri.https,
+    // which percent-encodes the path itself. Pre-encoding turns a space
+    // into %20 and then %2520, the API 404s, _safeGet swallows it, and a
+    // character with a space in their name silently vanishes from
+    // inventory.
     // Inventory and equipment are independent endpoints.
     final fetched = await Future.wait([
-      _safeGet('/v2/characters/$encoded/inventory', apiKey),
-      _safeGet('/v2/characters/$encoded/equipment', apiKey),
+      _safeGet('/v2/characters/$name/inventory', apiKey),
+      _safeGet('/v2/characters/$name/equipment', apiKey),
     ]);
 
     final bags = fetched[0];
