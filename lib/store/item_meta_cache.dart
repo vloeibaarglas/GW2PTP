@@ -13,7 +13,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/models.dart';
 
 class ItemMetaCache {
-  static const _prefsKey = 'item_meta_cache_v1';
+  // v2 adds rarity + type to each entry; v1 entries are refetched on
+  // demand after the bump.
+  static const _prefsKey = 'item_meta_cache_v2';
 
   final SharedPreferences _prefs;
   final Map<int, ItemMeta> _mem = {};
@@ -41,6 +43,8 @@ class ItemMetaCache {
               iconUrl: (value['icon'] as String?) ?? '',
               accountBound: (value['accountBound'] as bool?) ?? false,
               noSell: (value['noSell'] as bool?) ?? false,
+              rarity: (value['rarity'] as String?) ?? '',
+              type: (value['type'] as String?) ?? '',
             );
           }
         });

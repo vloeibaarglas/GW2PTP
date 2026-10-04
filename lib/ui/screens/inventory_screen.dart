@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 
 import '../../api/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/inventory_filters.dart';
 import '../widgets/item_tile.dart';
 
 class InventoryScreen extends StatefulWidget {
@@ -19,6 +20,31 @@ class InventoryScreen extends StatefulWidget {
 
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
+}
+
+/// Whether an inventory entry passes the active filters. Extracted for
+/// unit testing; the screen memoizes the filtered list.
+bool inventoryEntryMatches(
+  InventoryEntry entry,
+  ItemMeta Function(int id) metaLookup, {
+  String query = '',
+  String? typeFilter,
+  String? rarityFilter,
+  bool? sellableFilter,
+  bool? boundFilter,
+}) {
+  if (query.isNotEmpty) {
+    final name = metaLookup(entry.itemId).name.toLowerCase();
+    if (!name.contains(query)) return false;
+  }
+  final meta = metaLookup(entry.itemId);
+  if (typeFilter != null && meta.type != typeFilter) return false;
+  if (rarityFilter != null && meta.rarity != rarityFilter) return false;
+  if (sellableFilter != null && entry.isSellable(meta) != sellableFilter) {
+    return false;
+  }
+  if (boundFilter != null && entry.isBound(meta) != boundFilter) return false;
+  return true;
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
@@ -31,9 +57,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Set<String>? _collapsed;
 
   // Memoized filter+group: recomputed only when the inventory list
-  // instance or the query changes, not on every build.
+  // instance, the query, or any filter changes — not on every build.
   List<InventoryEntry>? _memoInventory;
   String _memoQuery = '';
+  String? _memoType;
+  String? _memoRarity;
+  bool? _memoSellable;
+  bool? _memoBound;
   List<String>? _memoLocations;
   Map<String, List<InventoryEntry>>? _memoGroups;
 
@@ -51,6 +81,18 @@ class _InventoryScreenState extends State<InventoryScreen> {
       (s) => s.inventory,
     );
     final app = context.read<AppState>();
+    final typeFilter = context.select<AppState, String?>(
+      (s) => s.inventoryTypeFilter,
+    );
+    final rarityFilter = context.select<AppState, String?>(
+      (s) => s.inventoryRarityFilter,
+    );
+    final sellableFilter = context.select<AppState, bool?>(
+      (s) => s.inventorySellableFilter,
+    );
+    final boundFilter = context.select<AppState, bool?>(
+      (s) => s.inventoryBoundFilter,
+    );
     return Column(
       children: [
         Padding(
@@ -66,29 +108,99 @@ class _InventoryScreenState extends State<InventoryScreen> {
             onChanged: (_) => setState(() {}),
           ),
         ),
-        Expanded(child: _buildList(context, app, inventory)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: InventoryFilters(
+            types: _availableTypes(app, inventory),
+            rarities: _availableRarities(app, inventory),
+            typeFilter: typeFilter,
+            rarityFilter: rarityFilter,
+            sellableFilter: sellableFilter,
+            boundFilter: boundFilter,
+            onTypeChanged: app.setInventoryTypeFilter,
+            onRarityChanged: app.setInventoryRarityFilter,
+            onSellableChanged: app.setInventorySellableFilter,
+            onBoundChanged: app.setInventoryBoundFilter,
+          ),
+        ),
+        Expanded(
+          child: _buildList(
+            context,
+            app,
+            inventory,
+            typeFilter,
+            rarityFilter,
+            sellableFilter,
+            boundFilter,
+          ),
+        ),
       ],
     );
+  }
+
+  /// Sorted unique item types present in the inventory.
+  List<String> _availableTypes(AppState app, List<InventoryEntry> inventory) {
+    final types = <String>{};
+    for (final e in inventory) {
+      final t = app.meta.lookup(e.itemId).type;
+      if (t.isNotEmpty) types.add(t);
+    }
+    return types.toList()..sort();
+  }
+
+  /// Rarities present in the inventory, in canonical GW2 rarity order.
+  List<String> _availableRarities(
+      AppState app, List<InventoryEntry> inventory) {
+    final rarities = <String>{};
+    for (final e in inventory) {
+      final r = app.meta.lookup(e.itemId).rarity;
+      if (r.isNotEmpty) rarities.add(r);
+    }
+    return [
+      for (final r in rarityOrder)
+        if (rarities.contains(r)) r,
+      for (final r in rarities)
+        if (!rarityOrder.contains(r)) r,
+    ];
   }
 
   Widget _buildList(
     BuildContext context,
     AppState app,
     List<InventoryEntry> inventory,
+    String? typeFilter,
+    String? rarityFilter,
+    bool? sellableFilter,
+    bool? boundFilter,
   ) {
     final query = _search.text.trim().toLowerCase();
-    if (!identical(inventory, _memoInventory) || query != _memoQuery) {
-      final entries = inventory.where((e) {
-        if (query.isEmpty) return true;
-        final name = app.meta.lookup(e.itemId).name.toLowerCase();
-        return name.contains(query);
-      }).toList();
+    if (!identical(inventory, _memoInventory) ||
+        query != _memoQuery ||
+        typeFilter != _memoType ||
+        rarityFilter != _memoRarity ||
+        sellableFilter != _memoSellable ||
+        boundFilter != _memoBound) {
+      final entries = inventory
+          .where((e) => inventoryEntryMatches(
+                e,
+                app.meta.lookup,
+                query: query,
+                typeFilter: typeFilter,
+                rarityFilter: rarityFilter,
+                sellableFilter: sellableFilter,
+                boundFilter: boundFilter,
+              ))
+          .toList();
       final groups = <String, List<InventoryEntry>>{};
       for (final e in entries) {
         groups.putIfAbsent(e.location, () => []).add(e);
       }
       _memoInventory = inventory;
       _memoQuery = query;
+      _memoType = typeFilter;
+      _memoRarity = rarityFilter;
+      _memoSellable = sellableFilter;
+      _memoBound = boundFilter;
       _memoGroups = groups;
       _memoLocations = [
         for (final a in _fixedAreas)
@@ -103,6 +215,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
     if (inventory.isEmpty || locations.isEmpty) {
       // Keep pull-to-refresh working in the empty state: the "Pull to
       // refresh" copy promises it.
+      final filtering = query.isNotEmpty ||
+          typeFilter != null ||
+          rarityFilter != null ||
+          sellableFilter != null ||
+          boundFilter != null;
       return RefreshIndicator(
         onRefresh: app.refreshAll,
         child: CustomScrollView(
@@ -113,7 +230,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 child: Text(
                   inventory.isEmpty
                       ? 'No inventory data. Pull to refresh.'
-                      : 'No items match "${_search.text.trim()}".',
+                      : (filtering
+                          ? 'No items match the current filters.'
+                          : 'No items match "${_search.text.trim()}".'),
                 ),
               ),
             ),

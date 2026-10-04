@@ -311,6 +311,22 @@ class AppState extends ChangeNotifier {
   /// Persisted; defaults to By Order.
   OrderGrouping buyingGrouping = OrderGrouping.order;
 
+  /// Inventory type filter (GW2 item type string). Null = all types.
+  /// Persisted.
+  String? inventoryTypeFilter;
+
+  /// Inventory rarity filter (GW2 rarity string). Null = all rarities.
+  /// Persisted.
+  String? inventoryRarityFilter;
+
+  /// Inventory sellable filter. Null = all, true = sellable only,
+  /// false = not sellable only. Persisted.
+  bool? inventorySellableFilter;
+
+  /// Inventory bound filter. Null = all, true = bound only,
+  /// false = unbound only. Persisted.
+  bool? inventoryBoundFilter;
+
   /// True when the last sale-history fetch hit [historyMaxPages] with a
   /// full final page — older transactions may exist beyond the 25,000 shown.
   bool soldHistoryCapped = false;
@@ -906,6 +922,58 @@ class AppState extends ChangeNotifier {
         settings.historyViewPref('listing_selling_grouping', 'order'));
     buyingGrouping = parseOrderGrouping(
         settings.historyViewPref('listing_buying_grouping', 'order'));
+    String? orNull(String key) {
+      final raw = settings.historyViewPref(key, '');
+      return raw.isEmpty ? null : raw;
+    }
+
+    bool? parseTri(String key) {
+      final raw = settings.historyViewPref(key, '');
+      return switch (raw) {
+        'yes' => true,
+        'no' => false,
+        _ => null,
+      };
+    }
+
+    inventoryTypeFilter = orNull('inventory_type');
+    inventoryRarityFilter = orNull('inventory_rarity');
+    inventorySellableFilter = parseTri('inventory_sellable');
+    inventoryBoundFilter = parseTri('inventory_bound');
+  }
+
+  /// Sets the inventory type filter, persisting the choice.
+  void setInventoryTypeFilter(String? type) {
+    if (type == inventoryTypeFilter) return;
+    inventoryTypeFilter = type;
+    settings.setHistoryViewPref('inventory_type', type ?? '');
+    notifyListeners();
+  }
+
+  /// Sets the inventory rarity filter, persisting the choice.
+  void setInventoryRarityFilter(String? rarity) {
+    if (rarity == inventoryRarityFilter) return;
+    inventoryRarityFilter = rarity;
+    settings.setHistoryViewPref('inventory_rarity', rarity ?? '');
+    notifyListeners();
+  }
+
+  /// Sets the inventory sellable filter, persisting the choice.
+  void setInventorySellableFilter(bool? sellable) {
+    if (sellable == inventorySellableFilter) return;
+    inventorySellableFilter = sellable;
+    settings.setHistoryViewPref(
+        'inventory_sellable', sellable == null ? '' : (sellable ? 'yes' : 'no'));
+    notifyListeners();
+  }
+
+  /// Sets the inventory bound filter, persisting the choice.
+  void setInventoryBoundFilter(bool? bound) {
+    if (bound == inventoryBoundFilter) return;
+    inventoryBoundFilter = bound;
+    settings.setHistoryViewPref(
+        'inventory_bound', bound == null ? '' : (bound ? 'yes' : 'no'));
+    notifyListeners();
   }
 
   /// Switches the Sold tab grouping, persisting the choice.

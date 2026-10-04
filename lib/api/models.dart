@@ -4,8 +4,8 @@
 /// crash the app, so every field has a fallback and lists filter out junk.
 library;
 
-/// Static item metadata (name + icon + trade flags). Cached on disk
-/// permanently — item metadata does not change.
+/// Static item metadata (name + icon + trade flags + rarity/type).
+/// Cached on disk permanently — item metadata does not change.
 class ItemMeta {
   final int id;
   final String name;
@@ -18,12 +18,20 @@ class ItemMeta {
   /// True when flags contain NoSell: the item cannot be sold at all.
   final bool noSell;
 
+  /// GW2 rarity string, e.g. "Exotic". Empty when unknown.
+  final String rarity;
+
+  /// GW2 item type string, e.g. "Weapon". Empty when unknown.
+  final String type;
+
   const ItemMeta({
     required this.id,
     required this.name,
     required this.iconUrl,
     this.accountBound = false,
     this.noSell = false,
+    this.rarity = '',
+    this.type = '',
   });
 
   factory ItemMeta.fromJson(Map<String, dynamic> json) {
@@ -37,6 +45,8 @@ class ItemMeta {
       iconUrl: (json['icon'] as String?) ?? '',
       accountBound: flagSet.contains('AccountBound'),
       noSell: flagSet.contains('NoSell'),
+      rarity: (json['rarity'] as String?) ?? '',
+      type: (json['type'] as String?) ?? '',
     );
   }
 
@@ -45,6 +55,8 @@ class ItemMeta {
         'icon': iconUrl,
         'accountBound': accountBound,
         'noSell': noSell,
+        'rarity': rarity,
+        'type': type,
       };
 
   /// Placeholder used when metadata has not been fetched yet.
