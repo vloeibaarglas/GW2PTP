@@ -58,6 +58,16 @@ class InventoryFilters extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final caption = theme.textTheme.labelSmall;
+    // Thin outline box so the dropdowns read as tappable selectors,
+    // matching the search field's outlined look.
+    Widget selectorBox(Widget child) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: theme.colorScheme.outline),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: child,
+        );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -65,38 +75,43 @@ class InventoryFilters extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: DropdownButton<String?>(
-                value: typeFilter,
-                isExpanded: true,
-                style: theme.textTheme.bodySmall,
-                underline: const SizedBox.shrink(),
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Type: All'),
-                  ),
-                  for (final t in types)
-                    DropdownMenuItem<String?>(value: t, child: Text(humanizeItemType(t))),
-                ],
-                onChanged: onTypeChanged,
+              child: selectorBox(
+                DropdownButton<String?>(
+                  value: typeFilter,
+                  isExpanded: true,
+                  style: theme.textTheme.bodySmall,
+                  underline: const SizedBox.shrink(),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Type: All'),
+                    ),
+                    for (final t in types)
+                      DropdownMenuItem<String?>(
+                          value: t, child: Text(humanizeItemType(t))),
+                  ],
+                  onChanged: onTypeChanged,
+                ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: DropdownButton<String?>(
-                value: rarityFilter,
-                isExpanded: true,
-                style: theme.textTheme.bodySmall,
-                underline: const SizedBox.shrink(),
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Rarity: All'),
-                  ),
-                  for (final r in rarities)
-                    DropdownMenuItem<String?>(value: r, child: Text(r)),
-                ],
-                onChanged: onRarityChanged,
+              child: selectorBox(
+                DropdownButton<String?>(
+                  value: rarityFilter,
+                  isExpanded: true,
+                  style: theme.textTheme.bodySmall,
+                  underline: const SizedBox.shrink(),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Rarity: All'),
+                    ),
+                    for (final r in rarities)
+                      DropdownMenuItem<String?>(value: r, child: Text(r)),
+                  ],
+                  onChanged: onRarityChanged,
+                ),
               ),
             ),
           ],

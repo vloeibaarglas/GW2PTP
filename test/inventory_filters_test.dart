@@ -178,6 +178,40 @@ void main() {
       expect(humanizeItemType(''), '');
     });
   });
+  group('inventoryEntryTag', () {
+    InventoryEntry entry({String? binding}) => InventoryEntry(
+          itemId: 1,
+          count: 4,
+          location: 'Bag 1',
+          binding: binding,
+        );
+
+    test('bound stacks print Bound', () {
+      expect(
+        inventoryEntryTag(
+            entry(binding: 'Account'), _meta(accountBound: false)),
+        ' · Bound',
+      );
+      expect(
+        inventoryEntryTag(entry(), _meta(accountBound: true)),
+        ' · Bound',
+      );
+    });
+
+    test('sellable stacks print Sellable', () {
+      expect(
+        inventoryEntryTag(entry(), _meta()),
+        ' · Sellable',
+      );
+    });
+
+    test('neither-bound-nor-sellable stacks print Not Sellable', () {
+      expect(
+        inventoryEntryTag(entry(), _meta(noSell: true)),
+        ' · Not Sellable',
+      );
+    });
+  });
 }
 
 extension on ItemMeta {

@@ -24,6 +24,11 @@ class InventoryScreen extends StatefulWidget {
 
 /// Whether an inventory entry passes the active filters. Extracted for
 /// unit testing; the screen memoizes the filtered list.
+/// Subtitle tag for an inventory entry: bound stacks print "Bound",
+/// sellable stacks print "Sellable", the rest "Not Sellable".
+String inventoryEntryTag(InventoryEntry e, ItemMeta meta) =>
+    e.isBound(meta) ? ' · Bound' : (e.isSellable(meta) ? ' · Sellable' : ' · Not Sellable');
+
 bool inventoryEntryMatches(
   InventoryEntry entry,
   ItemMeta Function(int id) metaLookup, {
@@ -343,12 +348,7 @@ class _AreaSection extends StatelessWidget {
             itemBuilder: (context, i) {
               final e = entries[i];
               final meta = metaLookup(e.itemId);
-              // Only the exceptional states get a tag: most items are
-              // sellable, so "Sellable" on every row would be noise. Bound
-              // implies not sellable.
-              final tag = e.isBound(meta)
-                  ? ' · Bound'
-                  : (e.isSellable(meta) ? '' : ' · Not Sellable');
+              final tag = inventoryEntryTag(e, meta);
               return Card(
                 margin: const EdgeInsets.only(bottom: 4),
                 child: ItemTile(
