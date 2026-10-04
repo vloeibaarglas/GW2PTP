@@ -25,9 +25,10 @@ class InventoryScreen extends StatefulWidget {
 /// Whether an inventory entry passes the active filters. Extracted for
 /// unit testing; the screen memoizes the filtered list.
 /// Subtitle tag for an inventory entry: bound stacks print "Bound",
-/// sellable stacks print "Sellable", the rest "Not Sellable".
+/// sellable stacks print "Sellable", anything else prints nothing — the
+/// negative states are never labeled.
 String inventoryEntryTag(InventoryEntry e, ItemMeta meta) =>
-    e.isBound(meta) ? ' · Bound' : (e.isSellable(meta) ? ' · Sellable' : ' · Not Sellable');
+    e.isBound(meta) ? ' · Bound' : (e.isSellable(meta) ? ' · Sellable' : '');
 
 bool inventoryEntryMatches(
   InventoryEntry entry,

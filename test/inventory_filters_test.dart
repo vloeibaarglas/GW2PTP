@@ -205,10 +205,10 @@ void main() {
       );
     });
 
-    test('neither-bound-nor-sellable stacks print Not Sellable', () {
+    test('neither-bound-nor-sellable stacks print nothing', () {
       expect(
         inventoryEntryTag(entry(), _meta(noSell: true)),
-        ' · Not Sellable',
+        '',
       );
     });
   });
