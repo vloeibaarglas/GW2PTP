@@ -2,8 +2,12 @@
 #
 # This workflow NEVER runs on push/PR ("leave it off for automated builds").
 # Trigger it by hand from the Actions tab for a release (e.g. v0.1):
-# it lints, tests, builds the release APK, and uploads it as an artifact
-# with a hash-stamped filename (gw2-ptp-<sha8>.apk) plus a .sha256 file.
+# it lints, tests, bumps the versionCode from the run number, builds the
+# release APK, and uploads it as an artifact with a hash-stamped filename
+# (gw2-ptp-<sha8>.apk) plus a .sha256 file. The versionCode bump guarantees
+# every release installs as an update over the previous one (Android
+# requires a strictly increasing versionCode); the versionName in
+# pubspec.yaml stays manual.
 #
 # Signing: release builds are signed with the release key. The workflow
 # restores it from repo secrets (see below) and writes android/key.properties
@@ -67,6 +71,19 @@ jobs:
           storeFile=release.keystore
           EOF
           chmod 600 android/key.properties android/release.keystore
+
+      - name: Bump versionCode from run number
+        run: |
+          python3 - <<'EOF'
+          import re
+          p = 'pubspec.yaml'
+          s = open(p).read()
+          s2 = re.sub(r'(?m)^version:\s*(\S+)\+(\d+)\s*$',
+                      r'version: \1+${{ github.run_number }}', s)
+          assert s2 != s, 'version line not found in pubspec.yaml'
+          open(p, 'w').write(s2)
+          print('version now:', [l for l in s2.splitlines() if l.startswith('version:')][0])
+          EOF
 
       - name: Build release APK
         run: flutter build apk --release --dart-define=BUILD_TAG=${GITHUB_SHA:0:7}

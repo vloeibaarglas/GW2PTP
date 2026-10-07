@@ -1,4 +1,4 @@
-# TP Console
+# GW2 Personal Trading Post
 
 A personal Guild Wars 2 Trading Post companion for Android. Three screens,
 no market data, no valuation — just your account's live Trading Post state:
@@ -55,13 +55,3 @@ Releases are cut by hand from the Actions tab: the **Release APK**
 workflow (`workflow_dispatch` only — never on push/PR) lints, tests,
 builds the release APK, and uploads it as an artifact named
 `gw2-ptp-<sha8>.apk` with a matching `.sha256` file.
-
-Release builds are signed with the release key (RSA-2048, valid to 2051).
-The keystore lives outside the repo; `android/key.properties` (gitignored)
-points Gradle at it. That key is the identity of every installed build, so
-the same key must sign every release or the APK won't install as an update.
-CI restores the key from repo secrets (`ANDROID_KEYSTORE_BASE64`,
-`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`) and writes
-`key.properties` before building. On a fresh clone without
-`key.properties`, release builds fall back to debug signing with a warning.
-Do not lose the keystore or its password.
