@@ -48,10 +48,3 @@ flutter analyze   # must be clean (flutter_lints, same bar as Sundown)
 flutter test
 flutter build apk --debug
 ```
-
-## Releases
-
-Releases are cut by hand from the Actions tab: the **Release APK**
-workflow (`workflow_dispatch` only — never on push/PR) lints, tests,
-builds the release APK, and uploads it as an artifact named
-`gw2-ptp-<sha8>.apk` with a matching `.sha256` file.
