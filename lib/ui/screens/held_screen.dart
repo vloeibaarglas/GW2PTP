@@ -238,33 +238,24 @@ List<HistoryRow> groupHistory(List<TpTransaction> history, HistoryGrouping mode)
 String _historyRowKey(HistoryRow r) =>
     '${r.itemId}|${r.price}|${r.quantity}|${r.filledAt?.toIso8601String()}';
 
-/// Orders grouped history rows per [sort]. Date sorts use the group's latest
-/// fill; rows without a timestamp sink to the bottom either way. Price
-/// sorts use the row's unit price (weighted average under By Item).
+/// Orders grouped history rows per [sort]: newest fill first, or highest
+/// unit price first. Rows without a timestamp always sink to the bottom.
 List<HistoryRow> sortHistory(List<HistoryRow> rows, HistorySort sort) {
   final ordered = [...rows];
   switch (sort) {
     case HistorySort.dateDesc:
-      ordered.sort((a, b) =>
-          _compareFilledAt(a.filledAt, b.filledAt, descending: true));
-    case HistorySort.dateAsc:
-      ordered.sort((a, b) =>
-          _compareFilledAt(a.filledAt, b.filledAt, descending: false));
+      ordered.sort((a, b) => _compareFilledAtDesc(a.filledAt, b.filledAt));
     case HistorySort.priceDesc:
       ordered.sort((a, b) => b.price.compareTo(a.price));
-    case HistorySort.priceAsc:
-      ordered.sort((a, b) => a.price.compareTo(b.price));
   }
   return ordered;
 }
 
-/// Nulls-last DateTime comparison; [descending] only flips the non-null
-/// order so missing timestamps always sink regardless of direction.
-int _compareFilledAt(DateTime? a, DateTime? b, {required bool descending}) {
+/// Nulls-last, newest-first DateTime comparison.
+int _compareFilledAtDesc(DateTime? a, DateTime? b) {
   if (a == null) return b == null ? 0 : 1;
   if (b == null) return -1;
-  final c = a.compareTo(b);
-  return descending ? -c : c;
+  return b.compareTo(a);
 }
 
 /// One-line (or fully expanded) subtitle for a history row. [fillsNoun] is

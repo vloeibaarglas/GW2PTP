@@ -17,9 +17,7 @@ String _groupingLabel(HistoryGrouping g) => switch (g) {
 
 String _sortLabel(HistorySort s) => switch (s) {
       HistorySort.dateDesc => 'Newest',
-      HistorySort.dateAsc => 'Oldest',
       HistorySort.priceDesc => 'Price ↓',
-      HistorySort.priceAsc => 'Price ↑',
     };
 
 class HistoryFilters extends StatelessWidget {
