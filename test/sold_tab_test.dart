@@ -247,28 +247,12 @@ void main() {
       expect(rows.map((r) => r.price), [3, 4, 1, 2]);
     });
 
-    test('dateAsc puts the earliest fill first, nulls last', () {
-      final rows = sortHistory(
-        [row(price: 1, filledAt: t2), row(price: 2), row(price: 3, filledAt: t1)],
-        HistorySort.dateAsc,
-      );
-      expect(rows.map((r) => r.price), [3, 1, 2]);
-    });
-
     test('priceDesc sorts by unit price, highest first', () {
       final rows = sortHistory(
         [row(price: 50), row(price: 200), row(price: 150)],
         HistorySort.priceDesc,
       );
       expect(rows.map((r) => r.price), [200, 150, 50]);
-    });
-
-    test('priceAsc sorts by unit price, lowest first', () {
-      final rows = sortHistory(
-        [row(price: 50), row(price: 200), row(price: 150)],
-        HistorySort.priceAsc,
-      );
-      expect(rows.map((r) => r.price), [50, 150, 200]);
     });
 
     test('does not mutate the input list', () {

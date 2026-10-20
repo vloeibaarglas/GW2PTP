@@ -106,10 +106,11 @@ class HistoryRange {
 /// per (item, price) point.
 enum HistoryGrouping { txn, item, price }
 
-/// How grouped history rows are ordered. Date sorts use the group's latest
-/// fill (HistoryRow.filledAt); price sorts use the row's unit price
-/// (weighted average under By Item).
-enum HistorySort { dateDesc, dateAsc, priceDesc, priceAsc }
+/// How grouped history rows are ordered: newest first, or highest unit
+/// price first. Date sorts use the group's latest fill
+/// (HistoryRow.filledAt); price sorts use the row's unit price (weighted
+/// average under By Item).
+enum HistorySort { dateDesc, priceDesc }
 
 /// The Bought tab's view mode: items waiting in the delivery box (pickup)
 /// vs. the historical purchase record (history). The range/group controls
