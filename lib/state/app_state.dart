@@ -129,6 +129,17 @@ enum OrderGrouping {
   final String label;
 }
 
+/// How open listings are ordered: the exchange's listing order untouched,
+/// or highest unit price first. (Listings carry no timestamp, so there is
+/// no date sort.)
+enum OrderSort {
+  listed('Listed'),
+  priceDesc('Price ↓');
+
+  const OrderSort(this.label);
+  final String label;
+}
+
 /// Keeps the rows inside the trailing [window]; rows without a timestamp
 /// are always kept (they cannot be range-filtered).
 List<TpTransaction> _inWindow(List<TpTransaction> rows, Duration window) {
@@ -328,6 +339,14 @@ class AppState extends ChangeNotifier {
   /// How the Listings > Buying tab groups open orders.
   /// Persisted; defaults to By Order.
   OrderGrouping buyingGrouping = OrderGrouping.order;
+
+  /// How the Listings > Selling tab orders its rows.
+  /// Persisted; defaults to the exchange's listing order.
+  OrderSort sellingSort = OrderSort.listed;
+
+  /// How the Listings > Buying tab orders its rows.
+  /// Persisted; defaults to the exchange's listing order.
+  OrderSort buyingSort = OrderSort.listed;
 
   /// Inventory type filter (GW2 item type string). Null = all types.
   /// Persisted.
@@ -947,6 +966,12 @@ class AppState extends ChangeNotifier {
         settings.historyViewPref('listing_selling_grouping', 'order'));
     buyingGrouping = parseOrderGrouping(
         settings.historyViewPref('listing_buying_grouping', 'order'));
+    OrderSort parseOrderSort(String raw) => OrderSort.values
+        .firstWhere((s) => s.name == raw, orElse: () => OrderSort.listed);
+    sellingSort = parseOrderSort(
+        settings.historyViewPref('listing_selling_sort', 'listed'));
+    buyingSort = parseOrderSort(
+        settings.historyViewPref('listing_buying_sort', 'listed'));
     String? orNull(String key) {
       final raw = settings.historyViewPref(key, '');
       return raw.isEmpty ? null : raw;
@@ -1055,6 +1080,22 @@ class AppState extends ChangeNotifier {
     if (grouping == buyingGrouping) return;
     buyingGrouping = grouping;
     settings.setHistoryViewPref('listing_buying_grouping', grouping.name);
+    notifyListeners();
+  }
+
+  /// Switches the Listings > Selling row order, persisting the choice.
+  void setSellingSort(OrderSort sort) {
+    if (sort == sellingSort) return;
+    sellingSort = sort;
+    settings.setHistoryViewPref('listing_selling_sort', sort.name);
+    notifyListeners();
+  }
+
+  /// Switches the Listings > Buying row order, persisting the choice.
+  void setBuyingSort(OrderSort sort) {
+    if (sort == buyingSort) return;
+    buyingSort = sort;
+    settings.setHistoryViewPref('listing_buying_sort', sort.name);
     notifyListeners();
   }
 

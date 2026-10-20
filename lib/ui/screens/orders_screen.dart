@@ -58,9 +58,11 @@ class _OrderList extends StatelessWidget {
         side == 'buy' ? state.buyingGrouping : state.sellingGrouping;
     final setGrouping =
         side == 'buy' ? state.setBuyingGrouping : state.setSellingGrouping;
+    final sort = side == 'buy' ? state.buyingSort : state.sellingSort;
+    final setSort = side == 'buy' ? state.setBuyingSort : state.setSellingSort;
 
     final total = orders.fold<int>(0, (sum, o) => sum + o.totalValue);
-    final rows = groupOrders(orders, grouping);
+    final rows = sortOrderRows(groupOrders(orders, grouping), sort);
 
     return RefreshIndicator(
       onRefresh: state.refreshAll,
@@ -72,6 +74,13 @@ class _OrderList extends StatelessWidget {
             labelOf: (g) => g.label,
             selected: grouping,
             onChanged: setGrouping,
+          ),
+          const SizedBox(height: 8),
+          CompactGroupBy<OrderSort>(
+            values: OrderSort.values,
+            labelOf: (s) => s.label,
+            selected: sort,
+            onChanged: setSort,
           ),
           const SizedBox(height: 8),
           ValueTile(
@@ -147,6 +156,15 @@ class OrderRow {
     required this.total,
     required this.orders,
   });
+}
+
+/// Orders grouped listing rows per [sort]: highest unit price first, or
+/// the exchange's listing order untouched.
+List<OrderRow> sortOrderRows(List<OrderRow> rows, OrderSort sort) {
+  if (sort == OrderSort.listed) return rows;
+  final ordered = [...rows];
+  ordered.sort((a, b) => b.price.compareTo(a.price));
+  return ordered;
 }
 
 /// Groups open orders per [mode], preserving first-appearance order.

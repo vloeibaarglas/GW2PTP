@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gw2tp/api/models.dart';
 import 'package:gw2tp/state/app_state.dart';
@@ -8,6 +9,7 @@ import 'package:gw2tp/ui/screens/orders_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fake_gw2_api.dart';
+import 'widget_test.dart' show pumpApp;
 
 TpOrder _order(int id, int itemId, int price, int quantity) => TpOrder(
       id: id,
@@ -139,6 +141,58 @@ void main() {
       expect(state.settings.lastTickAtMs, 123456789);
       expect(state.settings.lastTickResult, 'notified 2 fills');
       expect(state.lastTickLabel, contains('notified 2 fills'));
+    });
+  });
+  group('sortOrderRows', () {
+    final rows = [
+      OrderRow(itemId: 1, quantity: 1, price: 100, total: 100, orders: 1),
+      OrderRow(itemId: 2, quantity: 1, price: 300, total: 300, orders: 1),
+      OrderRow(itemId: 3, quantity: 1, price: 200, total: 200, orders: 1),
+    ];
+
+    test('listed keeps the input order and instance', () {
+      expect(sortOrderRows(rows, OrderSort.listed), same(rows));
+    });
+
+    test('priceDesc orders by unit price, highest first', () {
+      final ordered = sortOrderRows(rows, OrderSort.priceDesc);
+      expect(ordered.map((r) => r.price), [300, 200, 100]);
+    });
+
+    test('priceDesc does not mutate the input list', () {
+      final input = [...rows];
+      sortOrderRows(input, OrderSort.priceDesc);
+      expect(input.map((r) => r.price), [100, 300, 200]);
+    });
+  });
+
+  group('listings sort control', () {
+    testWidgets('tapping Price down reorders the Selling rows',
+        (tester) async {
+      final api = FakeGw2Api(sells: [
+        _order(1, 19684, 10000, 1),
+        _order(2, 19685, 30000, 1),
+        _order(3, 19686, 20000, 1),
+      ]);
+      await pumpApp(tester, apiKey: 'test-key', api: api);
+      await tester.pumpAndSettle();
+
+      // OrdersScreen is the default bottom-nav tab; Selling is the
+      // default inner tab.
+      List<String> prices() => tester
+          .widgetList<Text>(find.byType(Text))
+          .map((t) => t.textSpan?.toPlainText() ?? '')
+          .where((s) => s.startsWith('×'))
+          .map((s) => s.split(' ')[2])
+          .toList();
+
+      await tester.tap(find.text('Price ↓'));
+      await tester.pumpAndSettle();
+      expect(prices(), ['3g', '2g', '1g']);
+
+      await tester.tap(find.text('Listed'));
+      await tester.pumpAndSettle();
+      expect(prices(), ['1g', '3g', '2g']);
     });
   });
 }
