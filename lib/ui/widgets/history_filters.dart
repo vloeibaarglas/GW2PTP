@@ -46,16 +46,16 @@ class HistoryFilters extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        HistoryRangeSelector(
+          current: range,
+          onChanged: onRangeChanged,
+        ),
+        const SizedBox(height: 6),
         CompactGroupBy<HistoryGrouping>(
           values: HistoryGrouping.values,
           labelOf: _groupingLabel,
           selected: grouping,
           onChanged: onGroupingChanged,
-        ),
-        const SizedBox(height: 6),
-        HistoryRangeSelector(
-          current: range,
-          onChanged: onRangeChanged,
         ),
         const SizedBox(height: 6),
         CompactGroupBy<HistorySort>(
