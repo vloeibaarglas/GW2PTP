@@ -177,10 +177,8 @@ List<OrderRow> groupOrders(List<TpOrder> orders, OrderGrouping mode) {
           ),
       ];
     case OrderGrouping.price:
-      final byKey = groupByKey(orders, (o) => '${o.itemId}@${o.price}');
-      return [for (final g in byKey.values) collapse(g)];
+      return collapseByKey(orders, (o) => '${o.itemId}@${o.price}', collapse);
     case OrderGrouping.item:
-      final byItem = groupByKey(orders, (o) => o.itemId);
-      return [for (final g in byItem.values) collapse(g)];
+      return collapseByKey(orders, (o) => o.itemId, collapse);
   }
 }

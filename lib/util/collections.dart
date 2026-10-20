@@ -10,3 +10,13 @@ Map<K, List<T>> groupByKey<T, K>(List<T> items, K Function(T) keyOf) {
   }
   return groups;
 }
+
+/// One collapsed row per [keyOf] group: groups preserving first-appearance
+/// order, then maps each group through [collapse]. Backs the price/item
+/// modes of the history and open-orders grouping controls.
+List<R> collapseByKey<T, K, R>(
+  List<T> items,
+  K Function(T) keyOf,
+  R Function(List<T> group) collapse,
+) =>
+    [for (final g in groupByKey(items, keyOf).values) collapse(g)];
