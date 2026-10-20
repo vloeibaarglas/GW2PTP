@@ -89,70 +89,92 @@ class _BoughtTabState extends State<_BoughtTab> {
 
     return RefreshIndicator(
       onRefresh: state.refreshAll,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          SegmentedButton<BoughtMode>(
-            style: compactSegmentedStyle,
-            segments: const [
-              ButtonSegment(value: BoughtMode.pickup, label: Text('Pickup')),
-              ButtonSegment(value: BoughtMode.history, label: Text('History')),
-            ],
-            selected: {state.boughtMode},
-            onSelectionChanged: (s) => state.setBoughtMode(s.first),
-            showSelectedIcon: false,
-          ),
-          const SizedBox(height: 8),
-          historyControls(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                HistoryFilters(
-                  grouping: state.boughtGrouping,
-                  onGroupingChanged: state.setBoughtGrouping,
-                  range: state.boughtRange,
-                  onRangeChanged: state.setBoughtRange,
-                  sort: state.boughtSort,
-                  onSortChanged: state.setBoughtSort,
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-          if (!pickupMode && state.boughtHistoryTruncated)
-            _capWarningTile(state.boughtHistoryCoveredSince),
-          historyControls(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ValueTile(
-                  labels: const ['Bought Value'],
-                  copperValues: [boughtTotal],
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-          if (pickupMode) ...[
-            Text('Waiting For Pickup', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 4),
-            if (items.isEmpty)
-              const EmptyState('No items waiting for pickup.'),
-            for (final item in items)
-              Card(
-                margin: const EdgeInsets.only(bottom: 4),
-                child: ItemTile(
-                  itemId: item.itemId,
-                  metaLookup: state.meta.lookup,
-                  subtitle: Text(
-                    '×${item.count}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SegmentedButton<BoughtMode>(
+                    style: compactSegmentedStyle,
+                    segments: const [
+                      ButtonSegment(
+                          value: BoughtMode.pickup, label: Text('Pickup')),
+                      ButtonSegment(
+                          value: BoughtMode.history, label: Text('History')),
+                    ],
+                    selected: {state.boughtMode},
+                    onSelectionChanged: (s) => state.setBoughtMode(s.first),
+                    showSelectedIcon: false,
                   ),
+                  const SizedBox(height: 8),
+                  historyControls(
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        HistoryFilters(
+                          grouping: state.boughtGrouping,
+                          onGroupingChanged: state.setBoughtGrouping,
+                          range: state.boughtRange,
+                          onRangeChanged: state.setBoughtRange,
+                          sort: state.boughtSort,
+                          onSortChanged: state.setBoughtSort,
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                  if (!pickupMode && state.boughtHistoryTruncated)
+                    _capWarningTile(state.boughtHistoryCoveredSince),
+                  historyControls(
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ValueTile(
+                          labels: const ['Bought Value'],
+                          copperValues: [boughtTotal],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (pickupMode)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Waiting For Pickup',
+                        style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 4),
+                    if (items.isEmpty)
+                      const EmptyState('No items waiting for pickup.'),
+                    for (final item in items)
+                      Card(
+                        margin: const EdgeInsets.only(bottom: 4),
+                        child: ItemTile(
+                          itemId: item.itemId,
+                          metaLookup: state.meta.lookup,
+                          subtitle: Text(
+                            '×${item.count}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-          ] else
-            ..._historyRows(
+            )
+          else
+            ..._historySlivers(
               rows: _view.rowsFor(
                   history, state.boughtGrouping, state.boughtSort),
               isEmpty: history.isEmpty,
@@ -225,11 +247,9 @@ List<HistoryRow> groupHistory(List<TpTransaction> history, HistoryGrouping mode)
           ),
       ];
     case HistoryGrouping.price:
-      final byKey = groupByKey(history, (t) => '${t.itemId}@${t.price}');
-      return [for (final g in byKey.values) _collapse(g)];
+      return collapseByKey(history, (t) => '${t.itemId}@${t.price}', _collapse);
     case HistoryGrouping.item:
-      final byItem = groupByKey(history, (t) => t.itemId);
-      return [for (final g in byItem.values) _collapse(g)];
+      return collapseByKey(history, (t) => t.itemId, _collapse);
   }
 }
 
@@ -349,15 +369,15 @@ class _GroupedHistoryView {
 }
 
 /// Grouped history rows with tap-to-expand subtitles and the 25,000-row cap
-/// footer, as a widget list to spread directly into the tab's ListView.
-/// Shared by the Sold and Bought tabs so both offer the same interface.
+/// footer, as slivers to spread into the tab's CustomScrollView. Shared by
+/// the Sold and Bought tabs so both offer the same interface.
 /// (HistoryGrouping lives in app_state.dart.)
 ///
-/// These must stay a flat list, NOT a Column widget: a Column is a single
-/// sliver child and defeats the ListView's lazy building, forcing all rows
-/// (up to 25,000 cards with icons) to build and lay out on every tap — that
-/// is what made the Bought tab's buttons laggy. Spread rows stay lazy.
-List<Widget> _historyRows({
+/// Rows go through a SliverList.builder so only visible cards are built:
+/// eagerly instantiating up to 25,000 Cards on every build was the dominant
+/// cost of these tabs (widget creation alone ran ~10-20ms per build, on top
+/// of the per-row key formatting).
+List<Widget> _historySlivers({
   required List<HistoryRow> rows,
   required bool isEmpty,
   required HistoryGrouping grouping,
@@ -368,32 +388,49 @@ List<Widget> _historyRows({
   required bool capped,
   required String emptyText,
 }) {
+  Widget rowCard(HistoryRow row) {
+    // The stable key is only needed while a row is expanded. In the
+    // common case (nothing expanded) skip the per-row key formatting
+    // entirely — at 25k rows the toIso8601String() inside the key is
+    // the dominant cost of this loop, and it runs on every build.
+    final key = expandedRowKey == null ? null : _historyRowKey(row);
+    final expanded = key != null && key == expandedRowKey;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 4),
+      child: ItemTile(
+        itemId: row.itemId,
+        metaLookup: metaLookup,
+        subtitle: _historyRowSubtitle(row, expanded, grouping, fillsNoun),
+        clipSubtitle: !expanded,
+        onTap: () => onToggleRow(key ?? _historyRowKey(row)),
+      ),
+    );
+  }
+
+  if (isEmpty) {
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        sliver: SliverToBoxAdapter(child: EmptyState(emptyText)),
+      ),
+    ];
+  }
   return [
-    if (isEmpty) EmptyState(emptyText),
-    ...rows.map((row) {
-      // The stable key is only needed while a row is expanded. In the
-      // common case (nothing expanded) skip the per-row key formatting
-      // entirely — at 25k rows the toIso8601String() inside the key is
-      // the dominant cost of this loop, and it runs on every build.
-      final key = expandedRowKey == null ? null : _historyRowKey(row);
-      final expanded = key != null && key == expandedRowKey;
-      return Card(
-        margin: const EdgeInsets.only(bottom: 4),
-        child: ItemTile(
-          itemId: row.itemId,
-          metaLookup: metaLookup,
-          subtitle:
-              _historyRowSubtitle(row, expanded, grouping, fillsNoun),
-          clipSubtitle: !expanded,
-          onTap: () => onToggleRow(key ?? _historyRowKey(row)),
-        ),
-      );
-    }),
+    SliverPadding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, capped ? 0 : 16),
+      sliver: SliverList.builder(
+        itemCount: rows.length,
+        itemBuilder: (context, i) => rowCard(rows[i]),
+      ),
+    ),
     if (capped)
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Center(
-          child: Text('Showing ${_capCountLabel()} Most Recent Transactions'),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Center(
+            child:
+                Text('Showing ${_capCountLabel()} Most Recent Transactions'),
+          ),
         ),
       ),
   ];
@@ -425,43 +462,51 @@ class _SoldTabState extends State<_SoldTab> {
 
     return RefreshIndicator(
       onRefresh: state.refreshAll,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          HistoryFilters(
-            grouping: state.soldGrouping,
-            onGroupingChanged: state.setSoldGrouping,
-            range: state.soldRange,
-            onRangeChanged: state.setSoldRange,
-            sort: state.soldSort,
-            onSortChanged: state.setSoldSort,
-          ),
-          const SizedBox(height: 8),
-          if (state.soldHistoryTruncated)
-            _capWarningTile(state.soldHistoryCoveredSince),
-          ValueTile(
-            labels: const ['Sold Value', 'Net Value'],
-            copperValues: [gross, netOfFees(gross)],
-          ),
-          Card(
-            child: ListTile(
-              dense: true,
-              leading: Image.asset(
-                'assets/images/coin_gold.png',
-                width: 40,
-                height: 40,
-              ),
-              title: const Text('Coins Waiting For Pickup'),
-              subtitle: CoinsText(
-                state.delivery.coins,
-                style: theme.textTheme.titleMedium,
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  HistoryFilters(
+                    grouping: state.soldGrouping,
+                    onGroupingChanged: state.setSoldGrouping,
+                    range: state.soldRange,
+                    onRangeChanged: state.setSoldRange,
+                    sort: state.soldSort,
+                    onSortChanged: state.setSoldSort,
+                  ),
+                  const SizedBox(height: 8),
+                  if (state.soldHistoryTruncated)
+                    _capWarningTile(state.soldHistoryCoveredSince),
+                  ValueTile(
+                    labels: const ['Sold Value', 'Net Value'],
+                    copperValues: [gross, netOfFees(gross)],
+                  ),
+                  Card(
+                    child: ListTile(
+                      dense: true,
+                      leading: Image.asset(
+                        'assets/images/coin_gold.png',
+                        width: 40,
+                        height: 40,
+                      ),
+                      title: const Text('Coins Waiting For Pickup'),
+                      subtitle: CoinsText(
+                        state.delivery.coins,
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          ..._historyRows(
-            rows:
-                _view.rowsFor(history, state.soldGrouping, state.soldSort),
+          ..._historySlivers(
+            rows: _view.rowsFor(history, state.soldGrouping, state.soldSort),
             isEmpty: history.isEmpty,
             grouping: state.soldGrouping,
             expandedRowKey: _expandedRowKey,
