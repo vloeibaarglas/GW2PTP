@@ -34,12 +34,13 @@ class HistoryRange {
 
   static const h1 = HistoryRange._('1H', Duration(hours: 1));
   static const h6 = HistoryRange._('6H', Duration(hours: 6));
+  static const h12 = HistoryRange._('12H', Duration(hours: 12));
   static const h24 = HistoryRange._('24H', Duration(hours: 24));
   static const d3 = HistoryRange._('3D', Duration(days: 3));
   static const d7 = HistoryRange._('7D', Duration(days: 7));
 
   /// The presets (what the old enum exposed as `values`).
-  static const values = [h1, h6, h24, d3, d7];
+  static const values = [h1, h6, h12, h24, d3, d7];
 
   /// Day-granularity range from the dial, clamped to 1–30 days.
   factory HistoryRange.days(int days) {
@@ -60,6 +61,7 @@ class HistoryRange {
   String get storageKey {
     if (identical(this, h1)) return 'h1';
     if (identical(this, h6)) return 'h6';
+    if (identical(this, h12)) return 'h12';
     if (identical(this, h24)) return 'h24';
     if (identical(this, d3)) return 'd3';
     if (identical(this, d7)) return 'd7';
@@ -74,6 +76,8 @@ class HistoryRange {
         return h1;
       case 'h6':
         return h6;
+      case 'h12':
+        return h12;
       case 'h24':
         return h24;
       case 'd3':
@@ -101,6 +105,11 @@ class HistoryRange {
 /// every transaction, one row per item (weighted-average price), or one row
 /// per (item, price) point.
 enum HistoryGrouping { txn, item, price }
+
+/// How grouped history rows are ordered. Date sorts use the group's latest
+/// fill (HistoryRow.filledAt); price sorts use the row's unit price
+/// (weighted average under By Item).
+enum HistorySort { dateDesc, dateAsc, priceDesc, priceAsc }
 
 /// The Bought tab's view mode: items waiting in the delivery box (pickup)
 /// vs. the historical purchase record (history). The range/group controls
@@ -298,6 +307,14 @@ class AppState extends ChangeNotifier {
 
   /// How the Bought tab groups history rows. Persisted; defaults to By Txn.
   HistoryGrouping boughtGrouping = HistoryGrouping.txn;
+
+  /// How the Sold tab orders grouped history rows. Persisted; defaults to
+  /// newest first (matches the pre-sort first-appearance order).
+  HistorySort soldSort = HistorySort.dateDesc;
+
+  /// How the Bought tab orders grouped history rows. Persisted; defaults to
+  /// newest first (matches the pre-sort first-appearance order).
+  HistorySort boughtSort = HistorySort.dateDesc;
 
   /// Whether the Bought tab shows the delivery-box pickup view or the
   /// purchase history. Persisted; defaults to pickup.
@@ -897,8 +914,8 @@ class AppState extends ChangeNotifier {
     return !DateTime.now().subtract(window).isBefore(coveredSince);
   }
 
-  /// Loads the persisted history view preferences (grouping + range per
-  /// tab). Defaults: By Txn, 24h.
+  /// Loads the persisted history view preferences (grouping + range + sort
+  /// per tab). Defaults: By Txn, 24h, newest first.
   void _loadHistoryViewPrefs() {
     HistoryGrouping parseGrouping(String raw) =>
         HistoryGrouping.values.firstWhere(
@@ -911,6 +928,13 @@ class AppState extends ChangeNotifier {
     soldRange = parseRange(settings.historyViewPref('sold_range', 'h24'));
     boughtGrouping =
         parseGrouping(settings.historyViewPref('bought_grouping', 'txn'));
+    HistorySort parseSort(String raw) => HistorySort.values.firstWhere(
+          (s) => s.name == raw,
+          orElse: () => HistorySort.dateDesc,
+        );
+    soldSort = parseSort(settings.historyViewPref('sold_sort', 'dateDesc'));
+    boughtSort =
+        parseSort(settings.historyViewPref('bought_sort', 'dateDesc'));
     boughtRange = parseRange(settings.historyViewPref('bought_range', 'h24'));
     boughtMode =
         settings.historyViewPref('bought_mode', 'pickup') == 'history'
@@ -989,6 +1013,22 @@ class AppState extends ChangeNotifier {
     if (grouping == boughtGrouping) return;
     boughtGrouping = grouping;
     settings.setHistoryViewPref('bought_grouping', grouping.name);
+    notifyListeners();
+  }
+
+  /// Switches the Sold tab history sort, persisting the choice.
+  void setSoldSort(HistorySort sort) {
+    if (sort == soldSort) return;
+    soldSort = sort;
+    settings.setHistoryViewPref('sold_sort', sort.name);
+    notifyListeners();
+  }
+
+  /// Switches the Bought tab history sort, persisting the choice.
+  void setBoughtSort(HistorySort sort) {
+    if (sort == boughtSort) return;
+    boughtSort = sort;
+    settings.setHistoryViewPref('bought_sort', sort.name);
     notifyListeners();
   }
 
