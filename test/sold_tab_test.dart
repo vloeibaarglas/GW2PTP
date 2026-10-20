@@ -223,4 +223,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(subtitle().maxLines, 1);
   });
+
+  group('sortHistory', () {
+    HistoryRow row({required int price, DateTime? filledAt}) => HistoryRow(
+          itemId: 100,
+          quantity: 1,
+          price: price,
+          total: price,
+          filledAt: filledAt,
+          sales: 1,
+        );
+
+    final t1 = DateTime.utc(2026, 9, 28, 10);
+    final t2 = DateTime.utc(2026, 9, 29, 10);
+    final t3 = DateTime.utc(2026, 9, 30, 10);
+
+    test('dateDesc puts the latest fill first, nulls last', () {
+      final rows = sortHistory(
+        [row(price: 1, filledAt: t1), row(price: 2), row(price: 3, filledAt: t3),
+         row(price: 4, filledAt: t2)],
+        HistorySort.dateDesc,
+      );
+      expect(rows.map((r) => r.price), [3, 4, 1, 2]);
+    });
+
+    test('dateAsc puts the earliest fill first, nulls last', () {
+      final rows = sortHistory(
+        [row(price: 1, filledAt: t2), row(price: 2), row(price: 3, filledAt: t1)],
+        HistorySort.dateAsc,
+      );
+      expect(rows.map((r) => r.price), [3, 1, 2]);
+    });
+
+    test('priceDesc sorts by unit price, highest first', () {
+      final rows = sortHistory(
+        [row(price: 50), row(price: 200), row(price: 150)],
+        HistorySort.priceDesc,
+      );
+      expect(rows.map((r) => r.price), [200, 150, 50]);
+    });
+
+    test('priceAsc sorts by unit price, lowest first', () {
+      final rows = sortHistory(
+        [row(price: 50), row(price: 200), row(price: 150)],
+        HistorySort.priceAsc,
+      );
+      expect(rows.map((r) => r.price), [50, 150, 200]);
+    });
+
+    test('does not mutate the input list', () {
+      final rows = [row(price: 50), row(price: 200)];
+      sortHistory(rows, HistorySort.priceDesc);
+      expect(rows.map((r) => r.price), [50, 200]);
+    });
+  });
 }

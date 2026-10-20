@@ -74,7 +74,8 @@ class _BoughtTabState extends State<_BoughtTab> {
     final items = state.delivery.items;
     final theme = Theme.of(context);
 
-    final boughtTotal = _view.totalFor(history, state.boughtGrouping);
+    final boughtTotal =
+        _view.totalFor(history, state.boughtGrouping, state.boughtSort);
     final pickupMode = state.boughtMode == BoughtMode.pickup;
 
     // In pickup mode the history controls stay visible but greyed out and
@@ -111,6 +112,8 @@ class _BoughtTabState extends State<_BoughtTab> {
                   onGroupingChanged: state.setBoughtGrouping,
                   range: state.boughtRange,
                   onRangeChanged: state.setBoughtRange,
+                  sort: state.boughtSort,
+                  onSortChanged: state.setBoughtSort,
                 ),
                 const SizedBox(height: 8),
               ],
@@ -150,7 +153,8 @@ class _BoughtTabState extends State<_BoughtTab> {
               ),
           ] else
             ..._historyRows(
-              rows: _view.rowsFor(history, state.boughtGrouping),
+              rows: _view.rowsFor(
+                  history, state.boughtGrouping, state.boughtSort),
               isEmpty: history.isEmpty,
               grouping: state.boughtGrouping,
               expandedRowKey: _expandedRowKey,
@@ -234,6 +238,35 @@ List<HistoryRow> groupHistory(List<TpTransaction> history, HistoryGrouping mode)
 String _historyRowKey(HistoryRow r) =>
     '${r.itemId}|${r.price}|${r.quantity}|${r.filledAt?.toIso8601String()}';
 
+/// Orders grouped history rows per [sort]. Date sorts use the group's latest
+/// fill; rows without a timestamp sink to the bottom either way. Price
+/// sorts use the row's unit price (weighted average under By Item).
+List<HistoryRow> sortHistory(List<HistoryRow> rows, HistorySort sort) {
+  final ordered = [...rows];
+  switch (sort) {
+    case HistorySort.dateDesc:
+      ordered.sort((a, b) =>
+          _compareFilledAt(a.filledAt, b.filledAt, descending: true));
+    case HistorySort.dateAsc:
+      ordered.sort((a, b) =>
+          _compareFilledAt(a.filledAt, b.filledAt, descending: false));
+    case HistorySort.priceDesc:
+      ordered.sort((a, b) => b.price.compareTo(a.price));
+    case HistorySort.priceAsc:
+      ordered.sort((a, b) => a.price.compareTo(b.price));
+  }
+  return ordered;
+}
+
+/// Nulls-last DateTime comparison; [descending] only flips the non-null
+/// order so missing timestamps always sink regardless of direction.
+int _compareFilledAt(DateTime? a, DateTime? b, {required bool descending}) {
+  if (a == null) return b == null ? 0 : 1;
+  if (b == null) return -1;
+  final c = a.compareTo(b);
+  return descending ? -c : c;
+}
+
 /// One-line (or fully expanded) subtitle for a history row. [fillsNoun] is
 /// 'sales' on the Sold tab, 'buys' on the Bought tab.
 Widget _historyRowSubtitle(
@@ -282,34 +315,44 @@ Widget _capWarningTile(DateTime coveredSince) {
 }
 
 /// Memoized grouped-history view for the Held tabs: regroups (and
-/// re-totals) only when the history list instance or the grouping changes —
-/// not on every build. At 25k rows a regroup costs multiple full passes,
-/// so row expand taps must not pay it. Follows the inventory screen's
-/// identical() memo pattern; the AppState history getters return a stable
-/// instance across rebuilds, which is what makes the identity check work.
+/// re-totals) only when the history list instance, the grouping, or the
+/// sort changes — not on every build. At 25k rows a regroup costs multiple
+/// full passes, so row expand taps must not pay it. Follows the inventory
+/// screen's identical() memo pattern; the AppState history getters return a
+/// stable instance across rebuilds, which is what makes the identity check
+/// work.
 class _GroupedHistoryView {
   List<TpTransaction>? _history;
   HistoryGrouping? _grouping;
+  HistorySort? _sort;
   List<HistoryRow>? _rows;
   int _total = 0;
 
-  /// Grouped rows for [history] under [grouping].
-  List<HistoryRow> rowsFor(List<TpTransaction> history, HistoryGrouping grouping) {
-    _refresh(history, grouping);
+  /// Grouped rows for [history] under [grouping], ordered per [sort].
+  List<HistoryRow> rowsFor(
+      List<TpTransaction> history, HistoryGrouping grouping, HistorySort sort) {
+    _refresh(history, grouping, sort);
     return _rows!;
   }
 
   /// Sum of totalValue over [history].
-  int totalFor(List<TpTransaction> history, HistoryGrouping grouping) {
-    _refresh(history, grouping);
+  int totalFor(
+      List<TpTransaction> history, HistoryGrouping grouping, HistorySort sort) {
+    _refresh(history, grouping, sort);
     return _total;
   }
 
-  void _refresh(List<TpTransaction> history, HistoryGrouping grouping) {
-    if (identical(history, _history) && grouping == _grouping) return;
+  void _refresh(
+      List<TpTransaction> history, HistoryGrouping grouping, HistorySort sort) {
+    if (identical(history, _history) &&
+        grouping == _grouping &&
+        sort == _sort) {
+      return;
+    }
     _history = history;
     _grouping = grouping;
-    _rows = groupHistory(history, grouping);
+    _sort = sort;
+    _rows = sortHistory(groupHistory(history, grouping), sort);
     _total = history.fold<int>(0, (sum, t) => sum + t.totalValue);
   }
 }
@@ -379,7 +422,8 @@ class _SoldTabState extends State<_SoldTab> {
     final history = state.soldHistory;
     final theme = Theme.of(context);
 
-    final gross = _view.totalFor(history, state.soldGrouping);
+    final gross =
+        _view.totalFor(history, state.soldGrouping, state.soldSort);
 
     return RefreshIndicator(
       onRefresh: state.refreshAll,
@@ -391,6 +435,8 @@ class _SoldTabState extends State<_SoldTab> {
             onGroupingChanged: state.setSoldGrouping,
             range: state.soldRange,
             onRangeChanged: state.setSoldRange,
+            sort: state.soldSort,
+            onSortChanged: state.setSoldSort,
           ),
           const SizedBox(height: 8),
           if (state.soldHistoryTruncated)
@@ -416,7 +462,8 @@ class _SoldTabState extends State<_SoldTab> {
           ),
           const SizedBox(height: 8),
           ..._historyRows(
-            rows: _view.rowsFor(history, state.soldGrouping),
+            rows:
+                _view.rowsFor(history, state.soldGrouping, state.soldSort),
             isEmpty: history.isEmpty,
             grouping: state.soldGrouping,
             expandedRowKey: _expandedRowKey,

@@ -41,6 +41,7 @@ class HistoryRangeSelector extends StatelessWidget {
             segments: const [
               ButtonSegment(value: HistoryRange.h1, label: Text('1H')),
               ButtonSegment(value: HistoryRange.h6, label: Text('6H')),
+              ButtonSegment(value: HistoryRange.h12, label: Text('12H')),
               ButtonSegment(value: HistoryRange.h24, label: Text('24H')),
             ],
             // Empty when a day-range from the dial is active.

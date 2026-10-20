@@ -1,5 +1,5 @@
-/// Compact Group By + Range filters shared by the Sold and Bought tabs:
-/// no text labels (the segments are self-explanatory), small dense
+/// Compact Group By + Range + Sort filters shared by the Sold and Bought
+/// tabs: no text labels (the segments are self-explanatory), small dense
 /// segments, tight spacing — one consistent filter element everywhere.
 library;
 
@@ -15,11 +15,20 @@ String _groupingLabel(HistoryGrouping g) => switch (g) {
       HistoryGrouping.price => 'By Price',
     };
 
+String _sortLabel(HistorySort s) => switch (s) {
+      HistorySort.dateDesc => 'Newest',
+      HistorySort.dateAsc => 'Oldest',
+      HistorySort.priceDesc => 'Price ↓',
+      HistorySort.priceAsc => 'Price ↑',
+    };
+
 class HistoryFilters extends StatelessWidget {
   final HistoryGrouping grouping;
   final ValueChanged<HistoryGrouping> onGroupingChanged;
   final HistoryRange range;
   final Future<void> Function(HistoryRange) onRangeChanged;
+  final HistorySort sort;
+  final ValueChanged<HistorySort> onSortChanged;
 
   const HistoryFilters({
     super.key,
@@ -27,6 +36,8 @@ class HistoryFilters extends StatelessWidget {
     required this.onGroupingChanged,
     required this.range,
     required this.onRangeChanged,
+    required this.sort,
+    required this.onSortChanged,
   });
 
   @override
@@ -45,6 +56,13 @@ class HistoryFilters extends StatelessWidget {
         HistoryRangeSelector(
           current: range,
           onChanged: onRangeChanged,
+        ),
+        const SizedBox(height: 6),
+        CompactGroupBy<HistorySort>(
+          values: HistorySort.values,
+          labelOf: _sortLabel,
+          selected: sort,
+          onChanged: onSortChanged,
         ),
       ],
     );

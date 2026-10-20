@@ -11,6 +11,8 @@ void main() {
       expect(HistoryRange.h1.label, '1H');
       expect(HistoryRange.h1.window, const Duration(hours: 1));
       expect(HistoryRange.h6.window, const Duration(hours: 6));
+      expect(HistoryRange.h12.label, '12H');
+      expect(HistoryRange.h12.window, const Duration(hours: 12));
       expect(HistoryRange.h24.window, const Duration(hours: 24));
       expect(HistoryRange.d3.window, const Duration(days: 3));
       expect(HistoryRange.d7.label, '7D');
@@ -33,6 +35,7 @@ void main() {
     test('dayCount is null for hour presets, set for day ranges', () {
       expect(HistoryRange.h1.dayCount, isNull);
       expect(HistoryRange.h6.dayCount, isNull);
+      expect(HistoryRange.h12.dayCount, isNull);
       expect(HistoryRange.h24.dayCount, isNull);
       expect(HistoryRange.d3.dayCount, 3);
       expect(HistoryRange.d7.dayCount, 7);
@@ -43,6 +46,7 @@ void main() {
       for (final r in [
         HistoryRange.h1,
         HistoryRange.h6,
+        HistoryRange.h12,
         HistoryRange.h24,
         HistoryRange.d3,
         HistoryRange.d7,
@@ -58,6 +62,7 @@ void main() {
     test('parse keeps old saved preset names working', () {
       expect(HistoryRange.parse('h1'), HistoryRange.h1);
       expect(HistoryRange.parse('h6'), HistoryRange.h6);
+      expect(HistoryRange.parse('h12'), HistoryRange.h12);
       expect(HistoryRange.parse('h24'), HistoryRange.h24);
       expect(HistoryRange.parse('d3'), HistoryRange.d3);
       expect(HistoryRange.parse('d7'), HistoryRange.d7);
