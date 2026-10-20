@@ -370,18 +370,25 @@ List<Widget> _historyRows({
 }) {
   return [
     if (isEmpty) EmptyState(emptyText),
-    for (final row in rows)
-      Card(
+    ...rows.map((row) {
+      // The stable key is only needed while a row is expanded. In the
+      // common case (nothing expanded) skip the per-row key formatting
+      // entirely — at 25k rows the toIso8601String() inside the key is
+      // the dominant cost of this loop, and it runs on every build.
+      final key = expandedRowKey == null ? null : _historyRowKey(row);
+      final expanded = key != null && key == expandedRowKey;
+      return Card(
         margin: const EdgeInsets.only(bottom: 4),
         child: ItemTile(
           itemId: row.itemId,
           metaLookup: metaLookup,
-          subtitle: _historyRowSubtitle(
-              row, expandedRowKey == _historyRowKey(row), grouping, fillsNoun),
-          clipSubtitle: expandedRowKey != _historyRowKey(row),
-          onTap: () => onToggleRow(_historyRowKey(row)),
+          subtitle:
+              _historyRowSubtitle(row, expanded, grouping, fillsNoun),
+          clipSubtitle: !expanded,
+          onTap: () => onToggleRow(key ?? _historyRowKey(row)),
         ),
-      ),
+      );
+    }),
     if (capped)
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
