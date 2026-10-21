@@ -9,6 +9,7 @@ import '../api/gw2_client.dart';
 import '../api/models.dart';
 import '../api/permissions.dart';
 import '../store/data_cache.dart';
+import '../store/item_detail_cache.dart';
 import '../store/item_meta_cache.dart';
 import '../store/key_store.dart';
 import '../store/sync_settings.dart';
@@ -164,6 +165,9 @@ class AppState extends ChangeNotifier {
   final SyncSettings settings;
   final ThemeSettings themeSettings;
   final ItemMetaCache meta;
+
+  /// In-memory-only item details cache (60s TTL, fetch-on-open).
+  final ItemDetailCache detailCache = ItemDetailCache();
   final FillNotifier notifier;
   final SyncService syncService;
   final DataCache _cache;
@@ -185,6 +189,9 @@ class AppState extends ChangeNotifier {
   bool _keyLoaded = false;
   String? _apiKey;
   bool _disposed = false;
+
+  /// The API client, for screens that fetch on demand (item details).
+  Gw2Api get api => _api;
 
   @override
   void dispose() {

@@ -119,4 +119,71 @@ class FakeGw2Api implements Gw2Api {
 
   @override
   Future<Map<int, ItemMeta>> fetchItemMeta(List<int> ids) async => {};
+
+  // --- Item details surface (fetch-on-open) ---
+
+  /// Canned /v2/items/:id bodies, keyed by id.
+  Map<int, Map<String, dynamic>> itemDetails = {};
+
+  /// ids for which fetchItemDetail throws.
+  Set<int> failingDetailIds = {};
+
+  int fetchItemDetailCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> fetchItemDetail(int id) async {
+    fetchItemDetailCalls++;
+    if (failingDetailIds.contains(id)) {
+      throw const Gw2ApiException('boom');
+    }
+    final body = itemDetails[id];
+    if (body == null) throw Gw2ApiException('/v2/items/$id returned HTTP 404');
+    return body;
+  }
+
+  /// Canned quotes, keyed by id. Missing id -> null (not listed).
+  Map<int, CommerceQuote> quotes = {};
+  int fetchCommercePricesCalls = 0;
+
+  @override
+  Future<CommerceQuote?> fetchCommercePrices(int id) async {
+    fetchCommercePricesCalls++;
+    return quotes[id];
+  }
+
+  /// Canned books, keyed by id. Missing id -> null.
+  Map<int, ListingBook> books = {};
+  int fetchListingsCalls = 0;
+
+  @override
+  Future<ListingBook?> fetchListings(int id) async {
+    fetchListingsCalls++;
+    return books[id];
+  }
+
+  /// Canned recipe-id lists, keyed by output item id.
+  Map<int, List<int>> recipeIds = {};
+  int fetchRecipeIdsCalls = 0;
+
+  @override
+  Future<List<int>> fetchRecipeIdsForOutput(int id) async {
+    fetchRecipeIdsCalls++;
+    return recipeIds[id] ?? const [];
+  }
+
+  /// Canned recipes, keyed by recipe id.
+  Map<int, CraftRecipe> recipes = {};
+
+  @override
+  Future<CraftRecipe?> fetchRecipe(int id) async => recipes[id];
+
+  /// Canned history, keyed by item id.
+  Map<int, List<PricePoint>> priceHistory = {};
+  int fetchPriceHistoryCalls = 0;
+
+  @override
+  Future<List<PricePoint>> fetchPriceHistory(int id) async {
+    fetchPriceHistoryCalls++;
+    return priceHistory[id] ?? const [];
+  }
 }
