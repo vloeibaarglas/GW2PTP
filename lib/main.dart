@@ -1,6 +1,6 @@
 /// TP Console — a personal Guild Wars 2 Trading Post companion.
 ///
-/// Boot contract (Jerry: "I don't want adb to debug crashes"):
+/// Boot contract (no adb needed to triage crashes):
 /// * every async boundary is guarded — a failed keystore read, a dead
 ///   network, or a malformed API row degrades to an error banner, never a
 ///   crash;
