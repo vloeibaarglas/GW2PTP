@@ -68,10 +68,36 @@ abstract class Gw2Api {
 
   /// Static metadata (name, icon) for [ids]. Public endpoint, no key.
   Future<Map<int, ItemMeta>> fetchItemMeta(List<int> ids);
+
+  /// Full item record from /v2/items/:id. Public endpoint, no key.
+  /// Throws [Gw2ApiException] on transport failure or unknown id.
+  Future<Map<String, dynamic>> fetchItemDetail(int id);
+
+  /// Top-of-book quote from /v2/commerce/prices/:id. Public endpoint, no
+  /// key. Returns null when the item is not listed (HTTP 404).
+  Future<CommerceQuote?> fetchCommercePrices(int id);
+
+  /// Full order book from /v2/commerce/listings/:id. Public endpoint, no
+  /// key. Returns null when the item is not listed (HTTP 404). Can be
+  /// hundreds of KB for hot items — callers should fetch on demand only.
+  Future<ListingBook?> fetchListings(int id);
+
+  /// Recipe ids that craft [id] (/v2/recipes/search?output=). Public
+  /// endpoint, no key. Empty when the item is not craftable.
+  Future<List<int>> fetchRecipeIdsForOutput(int id);
+
+  /// One recipe from /v2/recipes/:id. Public endpoint, no key.
+  Future<CraftRecipe?> fetchRecipe(int id);
+
+  /// Price history from gw2bltc's public chart endpoint, oldest first.
+  /// Rows with missing prices are dropped. Empty on any failure — the
+  /// history section degrades instead of failing the page.
+  Future<List<PricePoint>> fetchPriceHistory(int id);
 }
 
 class HttpGw2Api implements Gw2Api {
   static const _host = 'api.guildwars2.com';
+  static const _bltcHost = 'www.gw2bltc.com';
   static const _pageSize = 200;
 
   final http.Client _client;
@@ -432,5 +458,86 @@ class HttpGw2Api implements Gw2Api {
       result.addAll(map);
     }
     return result;
+  }
+
+  /// GET that returns null on HTTP 404 (unknown/unlisted id) instead of
+  /// throwing; other failures still throw.
+  Future<dynamic> _getJsonOrNull(String path, {Map<String, String>? query}) async {
+    try {
+      return await _getJson(path, query: query);
+    } on Gw2ApiException catch (e) {
+      if (e.message.contains('HTTP 404')) return null;
+      rethrow;
+    }
+  }
+
+  /// GET against an arbitrary absolute URI (for the gw2bltc host).
+  /// Returns null on any failure — history is a nicety, never fatal.
+  Future<dynamic> _getJsonUri(Uri uri) async {
+    try {
+      final response = await _client.get(uri);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+      return jsonDecode(response.body);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchItemDetail(int id) async {
+    final data = await _getJson('/v2/items/$id');
+    if (data is Map<String, dynamic>) return data;
+    throw Gw2ApiException('/v2/items/$id returned an unexpected body');
+  }
+
+  @override
+  Future<CommerceQuote?> fetchCommercePrices(int id) async {
+    final data = await _getJsonOrNull('/v2/commerce/prices/$id');
+    if (data is Map<String, dynamic>) return CommerceQuote.fromJson(data);
+    return null;
+  }
+
+  @override
+  Future<ListingBook?> fetchListings(int id) async {
+    final data = await _getJsonOrNull('/v2/commerce/listings/$id');
+    if (data is Map<String, dynamic>) return ListingBook.fromJson(data);
+    return null;
+  }
+
+  @override
+  Future<List<int>> fetchRecipeIdsForOutput(int id) async {
+    final data = await _getJsonOrNull(
+      '/v2/recipes/search',
+      query: {'output': '$id'},
+    );
+    if (data is List) {
+      return [for (final v in data) if (v is int) v];
+    }
+    return const [];
+  }
+
+  @override
+  Future<CraftRecipe?> fetchRecipe(int id) async {
+    final data = await _getJsonOrNull('/v2/recipes/$id');
+    if (data is Map<String, dynamic>) return CraftRecipe.fromJson(data);
+    return null;
+  }
+
+  @override
+  Future<List<PricePoint>> fetchPriceHistory(int id) async {
+    final data = await _getJsonUri(
+      Uri.https(_bltcHost, '/api/tp/chart/$id'),
+    );
+    if (data is! List) return const [];
+    final points = <PricePoint>[];
+    for (final row in data) {
+      if (row is List<dynamic>) {
+        final p = PricePoint.fromRow(row);
+        if (p != null) points.add(p);
+      }
+    }
+    return points;
   }
 }
