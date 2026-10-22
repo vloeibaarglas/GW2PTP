@@ -46,7 +46,8 @@ class FilterChipShell extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.max,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, size: 16, color: fg),
               const SizedBox(width: 6),
