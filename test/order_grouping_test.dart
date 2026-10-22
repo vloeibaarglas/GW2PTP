@@ -186,11 +186,19 @@ void main() {
           .map((s) => s.split(' ')[2])
           .toList();
 
-      await tester.tap(find.text('Price ↓'));
+      // Open the sort chip (currently 'Listed'), pick Price ↓ in the sheet.
+      await tester.tap(find.text('Listed'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+          find.widgetWithText(RadioListTile<OrderSort>, 'Price ↓'));
       await tester.pumpAndSettle();
       expect(prices(), ['3g', '2g', '1g']);
 
-      await tester.tap(find.text('Listed'));
+      // Chip now reads 'Price ↓'; open it again and pick Listed.
+      await tester.tap(find.text('Price ↓'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+          find.widgetWithText(RadioListTile<OrderSort>, 'Listed'));
       await tester.pumpAndSettle();
       expect(prices(), ['1g', '3g', '2g']);
     });

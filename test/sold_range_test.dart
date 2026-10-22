@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gw2tp/api/gw2_client.dart';
 import 'package:gw2tp/state/app_state.dart';
@@ -470,13 +471,19 @@ void main() {
     await tester.tap(find.text('Sold'));
     await tester.pumpAndSettle();
 
-    for (final label in ['1H', '6H', '24H']) {
+    // The time chip shows the current window; presets live in its sheet.
+    expect(find.text('24H'), findsOneWidget);
+    await tester.tap(find.text('24H'));
+    await tester.pumpAndSettle();
+    for (final label in ['1H', '6H', '12H']) {
       expect(find.text(label), findsOneWidget);
     }
-    // Day granularity lives behind the dial button (default range is 24H).
+    // '24H' appears twice: the chip behind the sheet and the preset.
+    expect(find.text('24H'), findsNWidgets(2));
     expect(find.text('Days'), findsOneWidget);
 
     // Widen to 30D via the dial to trigger the capped 25,000-row fetch.
+    // (Sheet is already open from the assertions above.)
     await tester.tap(find.text('Days'));
     await tester.pumpAndSettle();
     await tapDialDay(tester, 30);
@@ -489,6 +496,9 @@ void main() {
     expect(find.textContaining(tilePrefix), findsOneWidget);
 
     // Narrow to 1H: the window is fully covered, tile goes away.
+    // The chip reads 30D after the widen above.
+    await tester.tap(find.text('30D'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('1H'));
     await tester.pumpAndSettle();
     expect(find.textContaining(tilePrefix), findsNothing);
@@ -515,6 +525,8 @@ void main() {
     await tester.tap(find.text('Sold'));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('24H'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Days'));
     await tester.pumpAndSettle();
     await tapDialDay(tester, 30);
@@ -525,7 +537,11 @@ void main() {
     expect(find.textContaining(tilePrefix), findsOneWidget);
 
     // Narrow 30D -> 20D via the dial: instant local filter, tile stays.
+    // The chip reads 30D; its sheet hosts the dial button (a FilledButton,
+    // also labeled 30D — the chip itself is not one).
     await tester.tap(find.text('30D'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '30D'));
     await tester.pumpAndSettle();
     await tapDialDay(tester, 20);
     expect(find.textContaining(tilePrefix), findsOneWidget);

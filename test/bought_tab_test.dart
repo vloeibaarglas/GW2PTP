@@ -110,24 +110,38 @@ void main() {
     expect(find.text('No recent purchases.'), findsNothing);
 
     // The history controls stay visible but greyed out in pickup mode:
-    // tapping the Days button must not open the dial.
-    await tester.tap(find.text('Days'));
+    // tapping the range chip must not open its sheet.
+    await tester.tap(find.text('24H'));
     await tester.pumpAndSettle();
+    expect(find.text('Time window'), findsNothing);
     expect(find.byKey(const ValueKey('day_dial')), findsNothing);
 
     // Switch to history mode.
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
 
-    // Same Group By + Range interface as Sold (compact, no text labels).
+    // Same filter interface as Sold: three chips showing current values.
+    expect(find.text('By Txn'), findsOneWidget);
+    expect(find.text('24H'), findsOneWidget);
+    expect(find.text('Newest'), findsOneWidget);
+
+    // The group sheet lists every option with its one-line explanation.
+    await tester.tap(find.text('By Txn'));
+    await tester.pumpAndSettle();
     for (final label in ['By Txn', 'By Item', 'By Price']) {
-      expect(find.text(label), findsOneWidget);
+      expect(
+        find.widgetWithText(RadioListTile<HistoryGrouping>, label),
+        findsOneWidget,
+      );
     }
-    for (final label in ['1H', '6H', '24H']) {
-      expect(find.text(label), findsOneWidget);
-    }
-    // Day granularity lives behind the dial button (default range is 24H).
-    expect(find.text('Days'), findsOneWidget);
+    expect(find.text('Every fill on its own row'), findsOneWidget);
+    expect(find.text('One row per item, weighted-average price'),
+        findsOneWidget);
+    expect(find.text('One row per price point'), findsOneWidget);
+    // Re-pick the current value to dismiss the sheet.
+    await tester.tap(
+        find.widgetWithText(RadioListTile<HistoryGrouping>, 'By Txn'));
+    await tester.pumpAndSettle();
 
     // Bought Value tile parallels the Sold tab's Sold Value tile (no net:
     // buys pay no Trading Post cut).
@@ -161,6 +175,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // Widen to 30D via the dial to trigger the capped 25,000-row fetch.
+    // The dial lives behind the time chip's sheet now.
+    await tester.tap(find.text('24H'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Days'));
     await tester.pumpAndSettle();
     await tapDialDay(tester, 30);
@@ -172,7 +189,10 @@ void main() {
     expect(find.textContaining(tilePrefix), findsOneWidget);
 
     // Narrowing to 1H is a covered instant switch — no re-fetch, tile gone.
+    // The chip reads 30D after the widen above.
     final callsBefore = api.historyFetchCalls;
+    await tester.tap(find.text('30D'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('1H'));
     await tester.pumpAndSettle();
     expect(find.textContaining(tilePrefix), findsNothing);

@@ -13,8 +13,8 @@ import '../../state/app_state.dart';
 import '../../util/coins.dart';
 import '../../util/collections.dart';
 import '../widgets/coins_text.dart';
-import '../widgets/compact_group_by.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/filter_dropdown_chip.dart';
 import '../widgets/item_tile.dart';
 import '../widgets/value_tile.dart';
 
@@ -69,18 +69,57 @@ class _OrderList extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          CompactGroupBy<OrderGrouping>(
-            values: OrderGrouping.values,
-            labelOf: (g) => g.label,
-            selected: grouping,
-            onChanged: setGrouping,
-          ),
-          const SizedBox(height: 8),
-          CompactGroupBy<OrderSort>(
-            values: OrderSort.values,
-            labelOf: (s) => s.label,
-            selected: sort,
-            onChanged: setSort,
+          Row(
+            children: [
+              Expanded(
+                child: FilterDropdownChip<OrderGrouping>(
+                  icon: Icons.view_list,
+                  currentLabel: grouping.label,
+                  sheetTitle: 'Group rows',
+                  options: const [
+                    FilterOption(
+                      value: OrderGrouping.order,
+                      label: 'By Order',
+                      description: 'Every order on its own row',
+                    ),
+                    FilterOption(
+                      value: OrderGrouping.item,
+                      label: 'By Item',
+                      description: 'One row per item, weighted-average price',
+                    ),
+                    FilterOption(
+                      value: OrderGrouping.price,
+                      label: 'By Price',
+                      description: 'One row per price point',
+                    ),
+                  ],
+                  selected: grouping,
+                  onChanged: setGrouping,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilterDropdownChip<OrderSort>(
+                  icon: Icons.sort,
+                  currentLabel: sort.label,
+                  sheetTitle: 'Sort rows',
+                  options: const [
+                    FilterOption(
+                      value: OrderSort.listed,
+                      label: 'Listed',
+                      description: "The exchange's listing order",
+                    ),
+                    FilterOption(
+                      value: OrderSort.priceDesc,
+                      label: 'Price ↓',
+                      description: 'Highest unit price first',
+                    ),
+                  ],
+                  selected: sort,
+                  onChanged: setSort,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           ValueTile(
