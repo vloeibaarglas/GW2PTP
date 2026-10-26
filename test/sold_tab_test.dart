@@ -203,10 +203,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Deliveries'));
     await tester.pumpAndSettle();
-    // Summary is the default tab now: navigate to Sold first, or the
-    // summary's recent-fills rows (same item) would match the finders.
-    await tester.tap(find.text('Sold'));
-    await tester.pumpAndSettle();
 
     Text subtitle() => tester.widgetList<Text>(find.byType(Text)).firstWhere(
           (t) => (t.textSpan?.toPlainText() ?? '').startsWith('×'),

@@ -1,9 +1,8 @@
 /// Deliveries screen: the delivery box and recent fills, tabbed like Listings.
 ///
-/// "Summary" is the default tab: highlight tiles and recent fills derived
-/// from the already-loaded state, no new data pull. "Sold" lists recently
-/// filled sells with their timestamps plus the coins still waiting for
-/// pickup; "Bought" is items waiting for pickup from filled buys.
+/// "Sold" lists recently filled sells with their timestamps plus the coins
+/// still waiting for pickup; "Bought" is items waiting for pickup from
+/// filled buys.
 library;
 
 import 'package:flutter/material.dart';
@@ -31,190 +30,22 @@ class HeldScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DefaultTabController(
-      length: 3,
+      length: 2,
       child: Column(
         children: [
           TabBar(tabs: [
-            Tab(text: 'Summary'),
             Tab(text: 'Sold'),
             Tab(text: 'Bought'),
           ]),
           Expanded(
             child: TabBarView(
               children: [
-                _SummaryTab(),
                 _SoldTab(),
                 _BoughtTab(),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Summary tab: highlight tiles and recent fills derived from the
-/// already-loaded state — no new data pull, no new sync logic. Tapping
-/// a tile jumps to the sub-tab it summarizes.
-class _SummaryTab extends StatelessWidget {
-  const _SummaryTab();
-
-  void _jump(BuildContext context, int index, [BoughtMode? mode]) {
-    if (mode != null) context.read<AppState>().setBoughtMode(mode);
-    // ignore: discarded_futures
-    DefaultTabController.of(context).animateTo(index);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final now = DateTime.now();
-    bool inWindow(TpTransaction t, Duration window) =>
-        t.filledAt != null && now.difference(t.filledAt!) < window;
-    final sold24h = state.soldHistory
-        .where((t) => inWindow(t, const Duration(days: 1)));
-    final sold7d = state.soldHistory
-        .where((t) => inWindow(t, const Duration(days: 7)));
-    final bought24h = state.boughtHistory
-        .where((t) => inWindow(t, const Duration(days: 1)));
-    final sold24hValue =
-        sold24h.fold<int>(0, (sum, t) => sum + t.totalValue);
-    final sold7dValue = sold7d.fold<int>(0, (sum, t) => sum + t.totalValue);
-    final bought24hValue =
-        bought24h.fold<int>(0, (sum, t) => sum + t.totalValue);
-    final pickupCount =
-        state.delivery.items.fold<int>(0, (sum, i) => sum + i.count);
-    // soldHistory arrives newest-first from the API walk, so the first
-    // entries are the recent fills — no re-sort on every build.
-    final recentFills =
-        state.soldHistory.where((t) => t.filledAt != null).take(4).toList();
-    final empty = state.soldHistory.isEmpty &&
-        state.boughtHistory.isEmpty &&
-        state.delivery.items.isEmpty &&
-        state.delivery.coins == 0;
-
-    return RefreshIndicator(
-      onRefresh: state.refreshAll,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (empty)
-            const EmptyState('Nothing to summarize yet — pull to refresh.')
-          else ...[
-            Row(
-              children: [
-                Expanded(
-                  child: _SummaryTile(
-                    label: 'To pick up',
-                    copper: state.delivery.coins,
-                    subline: '$pickupCount items',
-                    onTap: () => _jump(context, 2, BoughtMode.pickup),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _SummaryTile(
-                    label: 'Sold · 24h',
-                    copper: sold24hValue,
-                    subline: '${sold24h.length} fills',
-                    onTap: () => _jump(context, 1),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _SummaryTile(
-                    label: 'Sold · 7d',
-                    copper: sold7dValue,
-                    subline: '${sold7d.length} fills',
-                    onTap: () => _jump(context, 1),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _SummaryTile(
-                    label: 'Bought · 24h',
-                    copper: bought24hValue,
-                    subline: '${bought24h.length} purchases',
-                    onTap: () => _jump(context, 2, BoughtMode.history),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Recent fills',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            if (recentFills.isEmpty)
-              const EmptyState('No recent sales.')
-            else
-              for (final t in recentFills)
-                Card(
-                  margin: const EdgeInsets.only(bottom: 4),
-                  child: ItemTile(
-                    itemId: t.itemId,
-                    metaLookup: state.meta.lookup,
-                    subtitle: Text.rich(
-                      TextSpan(children: [
-                        const TextSpan(text: 'sold '),
-                        ...coinSpans(t.totalValue),
-                        TextSpan(text: ' · ${timeAgo(t.filledAt)}'),
-                      ]),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// One summary tile: a label, a big value (coins or a count), and an
-/// optional subline. Tapping jumps to the sub-tab it summarizes.
-class _SummaryTile extends StatelessWidget {
-  final String label;
-  final int? copper;
-  final int? count;
-  final String? subline;
-  final VoidCallback? onTap;
-
-  const _SummaryTile({
-    required this.label,
-    this.copper,
-    this.count,
-    this.subline,
-    this.onTap,
-  }) : assert(copper != null || count != null);
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label),
-              if (copper != null)
-                CoinsText(copper!, style: theme.textTheme.headlineSmall)
-              else
-                Text('$count', style: theme.textTheme.headlineSmall),
-              if (subline != null) Text(subline!),
-            ],
-          ),
-        ),
       ),
     );
   }
