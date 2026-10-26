@@ -423,12 +423,16 @@ class AppState extends ChangeNotifier {
   /// Passive mode shows a stale warning once data is older than an hour.
   bool get isStale => !neverSynced && dataAge > const Duration(hours: 1);
 
-  /// When the last successful sync happened, as local clock time:
-  /// "at 3:42 PM", or "at 9/29 3:42 PM" when not today.
+  /// When the last successful sync happened, as an age: "just now",
+  /// "12m ago", "3h ago", "2d ago". The banner shows this instead of a
+  /// clock time — an age answers "how fresh is this" at a glance.
   String get lastSyncLabel {
     if (neverSynced) return 'just now';
-    final dt = DateTime.fromMillisecondsSinceEpoch(settings.lastSyncAtMs);
-    return 'at ${formatClockTime(dt)}';
+    final age = dataAge;
+    if (age < const Duration(minutes: 1)) return 'just now';
+    if (age < const Duration(hours: 1)) return '${age.inMinutes}m ago';
+    if (age < const Duration(days: 1)) return '${age.inHours}h ago';
+    return '${age.inDays}d ago';
   }
 
   /// Boot: load the key, restore the last sync's data from disk so the
@@ -448,9 +452,9 @@ class AppState extends ChangeNotifier {
     if (settings.mode == SyncMode.active) {
       await _ensureService();
       // Still do one foreground refresh so the UI is never empty.
-      await refreshAll();
+      await refreshAll(force: true);
     } else {
-      await refreshAll();
+      await refreshAll(force: true);
     }
   }
 
@@ -476,9 +480,9 @@ class AppState extends ChangeNotifier {
       }
       notifyListeners();
     }
-    // Don't hammer the API when the app was backgrounded for seconds;
-    // pull-to-refresh stays manual.
-    if (!neverSynced && dataAge < const Duration(minutes: 2)) return;
+    // No separate "backgrounded for seconds" floor here: refreshAll's
+    // cooldown covers it, and errors bypass the cooldown so a resume
+    // still retries a failed sync.
     await refreshAll();
   }
 
@@ -581,15 +585,66 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> refreshAll() async {
+  /// Minimum gap between network refreshes: pulls inside it are skipped
+  /// (see refreshAll). Matches the old onResumed floor, now the single
+  /// rule for every trigger.
+  static const refreshCooldown = Duration(minutes: 2);
+
+  /// The refresh currently running, if any: a second refreshAll joins it
+  /// instead of stacking or flashing an instant no-op.
+  Future<void>? _currentSync;
+
+  /// Set when the last refresh was skipped by the cooldown or changed
+  /// nothing, so the banner can say "Already up to date" instead of
+  /// finishing silently. Cleared when a real refresh starts; never set
+  /// alongside an error.
+  String? refreshNotice;
+
+  /// Full refresh, shared by pull-to-refresh, the banner, boot, and
+  /// resume. Three guards, in order:
+  /// 1. A refresh already running is joined, not duplicated: callers
+  ///    await the same work, so the pull indicator spins until the real
+  ///    sync finishes instead of flashing an instant no-op.
+  /// 2. A section sync owning loading (e.g. a range widen) makes a full
+  ///    refresh return at once, as before.
+  /// 3. Inside [refreshCooldown] of the last successful sync, the refresh
+  ///    is skipped and [refreshNotice] says so — repeated pulls buy no
+  ///    new data (history walks stop at the first known page).
+  /// [force] bypasses the cooldown (boot always does one foreground
+  /// refresh); errors always bypass it too, so retry never blocks.
+  Future<void> refreshAll({bool force = false}) async {
+    final current = _currentSync;
+    if (current != null) return current;
+    if (status == LoadStatus.loading) return;
     final key = _apiKey;
     if (key == null) return;
-    if (status == LoadStatus.loading) return;
+    refreshNotice = null;
+    if (!force &&
+        !neverSynced &&
+        status != LoadStatus.error &&
+        dataAge < refreshCooldown) {
+      refreshNotice = 'Already up to date';
+      notifyListeners();
+      return;
+    }
+    final future = _doRefreshAll(key);
+    _currentSync = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_currentSync, future)) _currentSync = null;
+    }
+  }
+
+  /// Body of [refreshAll]: the seven sections in parallel, each guarded
+  /// so one flaky endpoint blanks only its own section.
+  Future<void> _doRefreshAll(String key) async {
     _beginSync();
     errorMessage = null;
     sectionNotice = null;
     invalidKey = false;
     notifyListeners();
+    final before = _dataFingerprint();
 
     // Each section loads independently: a missing permission (or one flaky
     // endpoint) blanks only its own section instead of failing the sync.
@@ -649,6 +704,9 @@ class AppState extends ChangeNotifier {
         if (failures.isNotEmpty) {
           sectionNotice = "Couldn't load: ${failures.join(', ')}.";
         }
+        if (_dataFingerprint() == before) {
+          refreshNotice = 'Already up to date';
+        }
       }
     } on InvalidApiKeyException {
       invalidKey = true;
@@ -659,6 +717,31 @@ class AppState extends ChangeNotifier {
       errorMessage = 'Sync failed: ${_shortError(e)}';
     }
     _endSync();
+  }
+
+  /// Cheap snapshot of everything a refresh can move, for the
+  /// "already up to date" check: counts, totals, and newest ids.
+  /// Timestamps are deliberately excluded — a refresh always bumps the
+  /// sync clock, which must not count as a change.
+  String _dataFingerprint() {
+    int maxId(List<TpTransaction> ts) =>
+        ts.isEmpty ? 0 : ts.map((t) => t.id).reduce((a, b) => a > b ? a : b);
+    int orderTotal(List<TpOrder> os) =>
+        os.fold<int>(0, (sum, o) => sum + o.totalValue);
+    return [
+      walletCoins,
+      delivery.coins,
+      delivery.items.length,
+      buys.length,
+      orderTotal(buys),
+      sells.length,
+      orderTotal(sells),
+      soldHistory.length,
+      maxId(soldHistory),
+      boughtHistory.length,
+      maxId(boughtHistory),
+      inventory.length,
+    ].join('|');
   }
 
   /// One paged history fetch, incremental: rows already in [existing]

@@ -45,16 +45,25 @@ class StaleBanner extends StatelessWidget {
       icon = Icons.schedule_outlined;
       text = 'No Data Yet.';
     } else if (state.isStale) {
-      bg = const Color(0xFFFFF3CD);
-      fg = const Color(0xFF664D03);
-      icon = Icons.warning_amber_outlined;
-      text = 'Data May Be Stale — Updated ${state.lastSyncLabel}.';
+      // Old data is not an alarm: the age itself says how old it is,
+      // and amber is reserved for error and partial-sync states.
+      bg = scheme.surfaceContainerHighest;
+      fg = scheme.onSurfaceVariant;
+      icon = Icons.schedule_outlined;
+      text = 'Updated ${state.lastSyncLabel} — pull to refresh.';
     } else if (state.sectionNotice != null) {
       // Some sections failed but others loaded: keep the data, flag the gap.
       bg = const Color(0xFFFFF3CD);
       fg = const Color(0xFF664D03);
       icon = Icons.warning_amber_outlined;
       text = 'Partial sync — ${state.sectionNotice} Tap to retry.';
+    } else if (state.refreshNotice != null) {
+      // Cooldown skip or no-change refresh: say so instead of
+      // finishing silently, or the user pulls again.
+      bg = scheme.surfaceContainerHighest;
+      fg = scheme.onSurfaceVariant;
+      icon = Icons.check_circle_outline;
+      text = '${state.refreshNotice} · synced ${state.lastSyncLabel}.';
     } else {
       bg = scheme.surfaceContainerHighest;
       fg = scheme.onSurfaceVariant;
