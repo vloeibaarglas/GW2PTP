@@ -1,7 +1,6 @@
-/// Home shell: bottom navigation over the four screens, wallet coins in
+/// Home shell: bottom navigation over the three screens, wallet coins in
 /// the app bar, the stale-data banner, and refresh-on-resume for passive
-/// mode. Tab order (SummaryScreen's jump indices must match): Summary,
-/// Listings, Deliveries, Holdings.
+/// mode.
 library;
 
 import 'package:flutter/material.dart';
@@ -16,7 +15,6 @@ import 'held_screen.dart';
 import 'inventory_screen.dart';
 import 'orders_screen.dart';
 import 'settings_screen.dart';
-import 'summary_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,7 +26,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _tab = 0;
 
-  static const _titles = ['Summary', 'Listings', 'Deliveries', 'Holdings'];
+  static const _titles = ['Listings', 'Deliveries', 'Holdings'];
 
   @override
   void initState() {
@@ -93,13 +91,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Expanded(
               child: IndexedStack(
                 index: _tab,
-                children: [
-                  SummaryScreen(
-                    onNavigate: (i) => setState(() => _tab = i),
-                  ),
-                  const OrdersScreen(),
-                  const HeldScreen(),
-                  const InventoryScreen(),
+                children: const [
+                  OrdersScreen(),
+                  HeldScreen(),
+                  InventoryScreen(),
                 ],
               ),
             ),
@@ -110,11 +105,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         currentIndex: _tab,
         onTap: (i) => setState(() => _tab = i),
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            activeIcon: Icon(Icons.dashboard),
-            label: 'Summary',
-          ),
           BottomNavigationBarItem(
             icon: Icon(Icons.swap_horiz_outlined),
             activeIcon: Icon(Icons.swap_horiz),

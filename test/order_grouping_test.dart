@@ -177,10 +177,8 @@ void main() {
       await pumpApp(tester, apiKey: 'test-key', api: api);
       await tester.pumpAndSettle();
 
-      // Summary is the default bottom-nav tab now; navigate to Listings.
-      // Selling is the default inner tab.
-      await tester.tap(find.text('Listings'));
-      await tester.pumpAndSettle();
+      // OrdersScreen is the default bottom-nav tab; Selling is the
+      // default inner tab.
       List<String> prices() => tester
           .widgetList<Text>(find.byType(Text))
           .map((t) => t.textSpan?.toPlainText() ?? '')
