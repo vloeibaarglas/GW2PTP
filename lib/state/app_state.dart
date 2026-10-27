@@ -613,7 +613,11 @@ class AppState extends ChangeNotifier {
   ///    is skipped and [refreshNotice] says so — repeated pulls buy no
   ///    new data (history walks stop at the first known page).
   /// [force] bypasses the cooldown (boot always does one foreground
-  /// refresh); errors always bypass it too, so retry never blocks.
+  /// refresh); errors always bypass it too, so retry never blocks. A
+  /// partial sync counts here as well: it updates the sync clock and
+  /// leaves status loaded, so without this its "Tap to retry" (and
+  /// pull-to-refresh, same path) would be swallowed by the cooldown
+  /// until it expired — the retry would look dead.
   Future<void> refreshAll({bool force = false}) async {
     final current = _currentSync;
     if (current != null) return current;
@@ -624,6 +628,7 @@ class AppState extends ChangeNotifier {
     if (!force &&
         !neverSynced &&
         status != LoadStatus.error &&
+        sectionNotice == null &&
         refreshCooldown > Duration.zero &&
         dataAge < refreshCooldown) {
       refreshNotice = 'Already up to date';

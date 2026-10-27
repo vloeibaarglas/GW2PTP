@@ -6,6 +6,12 @@ import 'package:gw2tp/api/models.dart';
 class FakeGw2Api implements Gw2Api {
   final bool validKey;
   int walletCoins;
+
+  /// When true, fetchWalletCoins throws (a flaky wallet endpoint).
+  bool failWallet = false;
+
+  /// Number of fetchWalletCoins calls — for asserting retries run.
+  int walletFetchCalls = 0;
   DeliveryBox delivery;
   List<TpOrder> buys;
   List<TpOrder> sells;
@@ -58,6 +64,8 @@ class FakeGw2Api implements Gw2Api {
   @override
   Future<int> fetchWalletCoins(String apiKey) async {
     _check();
+    walletFetchCalls++;
+    if (failWallet) throw Exception('wallet down');
     return walletCoins;
   }
 
