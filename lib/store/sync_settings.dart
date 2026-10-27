@@ -14,6 +14,7 @@ enum SyncMode { passive, active }
 class SyncSettings {
   static const _modeKey = 'sync_mode';
   static const _intervalKey = 'sync_interval_minutes';
+  static const _cooldownKey = 'refresh_cooldown_minutes';
   static const _notificationsKey = 'sync_notifications_enabled';
   static const _lastSyncKey = 'sync_last_at_ms';
   static const _lastTickKey = 'sync_last_tick_ms';
@@ -39,6 +40,16 @@ class SyncSettings {
 
   Future<void> setIntervalMinutes(int minutes) =>
       _prefs.setInt(_intervalKey, minutes.clamp(1, 60));
+
+  /// Minimum gap between manual refreshes, 0–60 minutes; 0 disables the
+  /// cooldown (every pull refreshes). Defaults to 2.
+  int get refreshCooldownMinutes {
+    final v = _prefs.getInt(_cooldownKey) ?? 2;
+    return v.clamp(0, 60);
+  }
+
+  Future<void> setRefreshCooldownMinutes(int minutes) =>
+      _prefs.setInt(_cooldownKey, minutes.clamp(0, 60));
 
   bool get notificationsEnabled => _prefs.getBool(_notificationsKey) ?? true;
 

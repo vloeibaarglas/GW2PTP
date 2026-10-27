@@ -585,10 +585,12 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Minimum gap between network refreshes: pulls inside it are skipped
-  /// (see refreshAll). Matches the old onResumed floor, now the single
+  /// Minimum gap between manual refreshes, from settings (default 2
+  /// minutes; 0 disables it). Read live so a settings change applies
+  /// without restart. Matches the old onResumed floor, now the single
   /// rule for every trigger.
-  static const refreshCooldown = Duration(minutes: 2);
+  Duration get refreshCooldown =>
+      Duration(minutes: settings.refreshCooldownMinutes);
 
   /// The refresh currently running, if any: a second refreshAll joins it
   /// instead of stacking or flashing an instant no-op.
@@ -622,6 +624,7 @@ class AppState extends ChangeNotifier {
     if (!force &&
         !neverSynced &&
         status != LoadStatus.error &&
+        refreshCooldown > Duration.zero &&
         dataAge < refreshCooldown) {
       refreshNotice = 'Already up to date';
       notifyListeners();
@@ -1440,6 +1443,12 @@ class AppState extends ChangeNotifier {
     if (settings.mode == SyncMode.active) {
       await _ensureService();
     }
+    notifyListeners();
+  }
+
+  Future<void> setRefreshCooldownMinutes(int minutes) async {
+    if (minutes == settings.refreshCooldownMinutes) return;
+    await settings.setRefreshCooldownMinutes(minutes);
     notifyListeners();
   }
 

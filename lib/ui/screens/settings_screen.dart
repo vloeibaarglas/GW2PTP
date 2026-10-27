@@ -264,6 +264,34 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
             ),
+            _sectionTitle(context, 'Manual Refresh'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _IntervalSlider(
+                      // Re-seed if the stored value ever changes underneath.
+                      key: ValueKey(state.settings.refreshCooldownMinutes),
+                      initialMinutes: state.settings.refreshCooldownMinutes,
+                      onCommit: state.setRefreshCooldownMinutes,
+                      title: 'Refresh Cooldown',
+                      min: 0,
+                      zeroLabel: 'Off',
+                      showBatteryWarning: false,
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Minimum gap between manual refreshes. Pulls inside '
+                      'it show "Already up to date" instead of hitting the '
+                      'API. Off means every pull refreshes.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             if (state.settings.mode == SyncMode.active) ...[
               _sectionTitle(context, 'Active Sync'),
               Card(
@@ -510,10 +538,27 @@ class _IntervalSlider extends StatefulWidget {
   final int initialMinutes;
   final ValueChanged<int> onCommit;
 
+  /// Header label above the slider.
+  final String title;
+
+  /// Slider minimum. The interval slider uses 1; the cooldown slider
+  /// uses 0, meaning "Off". The maximum is 60 for both.
+  final double min;
+
+  /// Label shown at the minimum value instead of "0 min", if any.
+  final String? zeroLabel;
+
+  /// Whether to warn about battery drain at short values (interval only).
+  final bool showBatteryWarning;
+
   const _IntervalSlider({
     super.key,
     required this.initialMinutes,
     required this.onCommit,
+    this.title = 'Check Interval',
+    this.min = 1,
+    this.zeroLabel,
+    this.showBatteryWarning = true,
   });
 
   @override
@@ -529,6 +574,14 @@ class _IntervalSliderState extends State<_IntervalSlider> {
     _value = widget.initialMinutes.toDouble();
   }
 
+  String get _label {
+    final v = _value.round();
+    if (widget.zeroLabel != null && v == widget.min.round()) {
+      return widget.zeroLabel!;
+    }
+    return '$v min';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -537,23 +590,23 @@ class _IntervalSliderState extends State<_IntervalSlider> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Check Interval'),
+            Text(widget.title),
             Text(
-              '${_value.round()} min',
+              _label,
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ],
         ),
         Slider(
-          min: 1,
+          min: widget.min,
           max: 60,
-          divisions: 59,
+          divisions: (60 - widget.min).round(),
           value: _value,
-          label: '${_value.round()} min',
+          label: _label,
           onChanged: (v) => setState(() => _value = v),
           onChangeEnd: (v) => widget.onCommit(v.round()),
         ),
-        if (_value.round() < 5)
+        if (widget.showBatteryWarning && _value.round() < 5)
           const Row(
             children: [
               Icon(Icons.battery_alert_outlined,
