@@ -67,10 +67,11 @@ void main() {
       expect(e.isSellable(accountBoundMeta), isFalse);
     });
 
-    test('NoSell without binding is not sellable but not bound', () {
+    test('NoSell without binding is sellable: NoSell is a vendor flag, '
+        'not a TP flag (Quip carries it yet trades on the TP)', () {
       const e = InventoryEntry(itemId: 12, count: 1, location: 'Bank');
       expect(e.isBound(noSellMeta), isFalse);
-      expect(e.isSellable(noSellMeta), isFalse);
+      expect(e.isSellable(noSellMeta), isTrue);
     });
 
     test('unbound item without NoSell is sellable', () {

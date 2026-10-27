@@ -95,13 +95,14 @@ void main() {
     });
 
     test('sellable filter yes', () {
-      // 1 is sellable; 2 is bound; 3 is NoSell.
+      // 1 is sellable; 2 is bound; 3 is NoSell but unbound, and NoSell
+      // is a vendor flag, so it is sellable too.
       expect(
           entries
               .where((e) =>
                   inventoryEntryMatches(e, lookup, sellableFilter: true))
               .map((e) => e.itemId),
-          [1]);
+          [1, 3]);
     });
 
     test('sellable filter no', () {
@@ -111,7 +112,7 @@ void main() {
                   inventoryEntryMatches(e, lookup, sellableFilter: false))
               .map((e) => e.itemId)
               .toSet(),
-          {2, 3});
+          {2});
     });
 
     test('bound filter yes', () {
@@ -134,6 +135,7 @@ void main() {
     });
 
     test('combined filters', () {
+      // Weapon + Exotic + sellable: 1, and 3 (NoSell but unbound).
       expect(
           entries
               .where((e) => inventoryEntryMatches(
@@ -141,10 +143,10 @@ void main() {
                     lookup,
                     typeFilter: 'Weapon',
                     rarityFilter: 'Exotic',
-                    sellableFilter: false,
+                    sellableFilter: true,
                   ))
               .map((e) => e.itemId),
-          [3]);
+          [1, 3]);
     });
 
     test('query still applies alongside filters', () {
@@ -205,10 +207,10 @@ void main() {
       );
     });
 
-    test('neither-bound-nor-sellable stacks print nothing', () {
+    test('NoSell stacks still print Sellable (vendor flag, not TP)', () {
       expect(
         inventoryEntryTag(entry(), _meta(noSell: true)),
-        '',
+        ' · Sellable',
       );
     });
   });
