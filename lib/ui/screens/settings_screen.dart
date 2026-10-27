@@ -1,5 +1,6 @@
-/// Settings: API key (securely stored, always masked), sync mode,
-/// active-sync interval, notifications, and battery optimization.
+/// Settings, grouped: Account (API key, securely stored and always
+/// masked, plus its permissions), Sync (mode, active-sync options,
+/// manual-refresh cooldown), Appearance, and Cached Data diagnostics.
 library;
 
 import '../../native/battery_optimization.dart';
@@ -117,6 +118,24 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final permissionTotal = requiredApiPermissions.length;
+    final permissionGranted = state.hasKey
+        ? permissionTotal - state.missingPermissions.length
+        : 0;
+    final accountSubtitle = state.hasKey
+        ? 'Key set · $permissionGranted of $permissionTotal permissions'
+        : 'Key not set';
+    final cooldownLabel = state.settings.refreshCooldownMinutes == 0
+        ? 'Off'
+        : '${state.settings.refreshCooldownMinutes} min';
+    final syncSubtitle = state.settings.mode == SyncMode.active
+        ? 'Active · every ${state.settings.intervalMinutes} min · cooldown $cooldownLabel'
+        : 'Passive · cooldown $cooldownLabel';
+    final themeSubtitle = state.themeMode == ThemeMode.light
+        ? 'Light'
+        : state.themeMode == ThemeMode.dark
+            ? 'Dark'
+            : 'System';
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
@@ -139,7 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                 ),
               ),
-            _sectionTitle(context, 'API Key'),
+            _sectionTitle(context, 'Account', accountSubtitle),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -199,20 +218,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                           ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-            ),
-            _sectionTitle(context, 'API Permissions'),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                    const Divider(height: 24),
                     const Text(
-                      'The following permission are needed. Missing '
-                      'permissions results in missing data',
+                      'These permissions are needed for full data.',
                     ),
                     const SizedBox(height: 8),
                     for (final entry in requiredApiPermissions.entries)
@@ -237,7 +245,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
             ),
-            _sectionTitle(context, 'Sync Mode'),
+            _sectionTitle(context, 'Sync', syncSubtitle),
             Card(
               child: RadioGroup<SyncMode>(
                 groupValue: state.settings.mode,
@@ -264,36 +272,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
             ),
-            _sectionTitle(context, 'Manual Refresh'),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _IntervalSlider(
-                      // Re-seed if the stored value ever changes underneath.
-                      key: ValueKey(state.settings.refreshCooldownMinutes),
-                      initialMinutes: state.settings.refreshCooldownMinutes,
-                      onCommit: state.setRefreshCooldownMinutes,
-                      title: 'Refresh Cooldown',
-                      min: 0,
-                      zeroLabel: 'Off',
-                      showBatteryWarning: false,
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Minimum gap between manual refreshes. Pulls inside '
-                      'it show "Already up to date" instead of hitting the '
-                      'API. Off means every pull refreshes.',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ),
             if (state.settings.mode == SyncMode.active) ...[
-              _sectionTitle(context, 'Active Sync'),
+              const SizedBox(height: 8),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -329,6 +309,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                             ? null
                             : (on) => _onBatteryToggle(on),
                       ),
+                      const Divider(height: 24),
+                      const Text(
+                        'Status',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
                       Row(
                         children: [
                           Icon(
@@ -363,7 +350,35 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
             ],
-            _sectionTitle(context, 'Theme'),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _IntervalSlider(
+                      // Re-seed if the stored value ever changes underneath.
+                      key: ValueKey(state.settings.refreshCooldownMinutes),
+                      initialMinutes: state.settings.refreshCooldownMinutes,
+                      onCommit: state.setRefreshCooldownMinutes,
+                      title: 'Refresh Cooldown',
+                      min: 0,
+                      zeroLabel: 'Off',
+                      showBatteryWarning: false,
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Minimum gap between manual refreshes. Pulls inside '
+                      'it show "Already up to date" instead of hitting the '
+                      'API. Off means every pull refreshes.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            _sectionTitle(context, 'Appearance', themeSubtitle),
             Card(
               child: RadioGroup<ThemeMode>(
                 groupValue: state.themeMode,
@@ -440,10 +455,18 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Widget _sectionTitle(BuildContext context, String title) {
+  Widget _sectionTitle(BuildContext context, String title,
+      [String? subtitle]) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-      child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          if (subtitle != null)
+            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
     );
   }
 
