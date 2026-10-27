@@ -523,12 +523,13 @@ class _DescriptionCard extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              if (!detail.accountBound && !detail.noSell)
+              // NoSell is a vendor flag, not a TP flag (Quip carries it
+              // yet trades at ~1,499g), so it gates neither chip: an
+              // unbound item reads Sellable, a bound one reads Bound.
+              if (!detail.accountBound)
                 const Chip(label: Text('Sellable')),
               if (detail.accountBound)
                 const Chip(label: Text('Bound')),
-              if (detail.noSell)
-                const Chip(label: Text('Not sellable')),
               for (final r in detail.restrictions)
                 Chip(label: Text(_humanize(r))),
             ],

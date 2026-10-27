@@ -15,7 +15,10 @@ class ItemMeta {
   /// AccountBound): it can never be listed on the Trading Post.
   final bool accountBound;
 
-  /// True when flags contain NoSell: the item cannot be sold at all.
+  /// True when flags contain NoSell: the item cannot be sold to a vendor
+  /// (merchant). This says nothing about the Trading Post — legendaries
+  /// like Quip carry NoSell yet trade heavily there — so it never gates
+  /// sellability below.
   final bool noSell;
 
   /// GW2 rarity string, e.g. "Exotic". Empty when unknown.
@@ -92,9 +95,12 @@ class InventoryEntry {
       binding == 'Character' ||
       meta.accountBound;
 
-  /// True when the stack can be listed on the Trading Post: not flagged
-  /// NoSell and not bound.
-  bool isSellable(ItemMeta meta) => !meta.noSell && !isBound(meta);
+  /// True when the stack can be listed on the Trading Post: not bound.
+  /// NoSell deliberately does not gate this — it is a vendor flag, and
+  /// the inventory screen has no market data to override it with (the
+  /// web app's has-price override does not apply here). An unbound stack
+  /// of a market-less item reads sellable; that edge is accepted.
+  bool isSellable(ItemMeta meta) => !isBound(meta);
 
   Map<String, dynamic> toJson() => {
         'id': itemId,
