@@ -43,6 +43,8 @@ class ItemMetaCache {
               iconUrl: (value['icon'] as String?) ?? '',
               accountBound: (value['accountBound'] as bool?) ?? false,
               noSell: (value['noSell'] as bool?) ?? false,
+              soulbindOnAcquire:
+                  (value['soulbindOnAcquire'] as bool?) ?? false,
               rarity: (value['rarity'] as String?) ?? '',
               type: (value['type'] as String?) ?? '',
             );
