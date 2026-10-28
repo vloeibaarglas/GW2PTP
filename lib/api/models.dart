@@ -21,6 +21,12 @@ class ItemMeta {
   /// sellability below.
   final bool noSell;
 
+  /// True when flags contain SoulbindOnAcquire: the item binds the moment
+  /// it is acquired, so every owned copy is bound. (SoulBindOnUse is
+  /// deliberately NOT here: like AccountBindOnUse, an unused copy is
+  /// still sellable until used.)
+  final bool soulbindOnAcquire;
+
   /// GW2 rarity string, e.g. "Exotic". Empty when unknown.
   final String rarity;
 
@@ -33,6 +39,7 @@ class ItemMeta {
     required this.iconUrl,
     this.accountBound = false,
     this.noSell = false,
+    this.soulbindOnAcquire = false,
     this.rarity = '',
     this.type = '',
   });
@@ -48,6 +55,7 @@ class ItemMeta {
       iconUrl: (json['icon'] as String?) ?? '',
       accountBound: flagSet.contains('AccountBound'),
       noSell: flagSet.contains('NoSell'),
+      soulbindOnAcquire: flagSet.contains('SoulbindOnAcquire'),
       rarity: (json['rarity'] as String?) ?? '',
       type: (json['type'] as String?) ?? '',
     );
@@ -58,6 +66,7 @@ class ItemMeta {
         'icon': iconUrl,
         'accountBound': accountBound,
         'noSell': noSell,
+        'soulbindOnAcquire': soulbindOnAcquire,
         'rarity': rarity,
         'type': type,
       };
@@ -93,7 +102,8 @@ class InventoryEntry {
   bool isBound(ItemMeta meta) =>
       binding == 'Account' ||
       binding == 'Character' ||
-      meta.accountBound;
+      meta.accountBound ||
+      meta.soulbindOnAcquire;
 
   /// True when the stack can be listed on the Trading Post: not bound.
   /// NoSell deliberately does not gate this — it is a vendor flag, and
@@ -479,6 +489,7 @@ class ItemDetail {
 
   bool get accountBound => flags.contains('AccountBound');
   bool get noSell => flags.contains('NoSell');
+  bool get soulbindOnAcquire => flags.contains('SoulbindOnAcquire');
   bool get soulbindOnUse => flags.contains('SoulBindOnUse');
 
   /// Short human lines for the type-specific details block, e.g.

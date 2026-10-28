@@ -526,9 +526,12 @@ class _DescriptionCard extends StatelessWidget {
               // NoSell is a vendor flag, not a TP flag (Quip carries it
               // yet trades at ~1,499g), so it gates neither chip: an
               // unbound item reads Sellable, a bound one reads Bound.
-              if (!detail.accountBound)
+              // SoulbindOnAcquire binds every owned copy, so it counts
+              // as bound here (unlike SoulBindOnUse / AccountBindOnUse,
+              // where an unused copy is still sellable).
+              if (!detail.accountBound && !detail.soulbindOnAcquire)
                 const Chip(label: Text('Sellable')),
-              if (detail.accountBound)
+              if (detail.accountBound || detail.soulbindOnAcquire)
                 const Chip(label: Text('Bound')),
               for (final r in detail.restrictions)
                 Chip(label: Text(_humanize(r))),

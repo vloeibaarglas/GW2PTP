@@ -25,7 +25,7 @@ void main() {
         'id': 3,
         'name': 'Cached Thing',
         'icon': 'https://example.com/icon.png',
-        'flags': ['AccountBound'],
+        'flags': ['AccountBound', 'SoulbindOnAcquire'],
       });
       final restored = ItemMeta(
         id: 3,
@@ -33,9 +33,12 @@ void main() {
         iconUrl: (meta.toJson()['icon'] as String?) ?? '',
         accountBound: (meta.toJson()['accountBound'] as bool?) ?? false,
         noSell: (meta.toJson()['noSell'] as bool?) ?? false,
+        soulbindOnAcquire:
+            (meta.toJson()['soulbindOnAcquire'] as bool?) ?? false,
       );
       expect(restored.accountBound, isTrue);
       expect(restored.noSell, isFalse);
+      expect(restored.soulbindOnAcquire, isTrue);
     });
   });
 
@@ -72,6 +75,29 @@ void main() {
       const e = InventoryEntry(itemId: 12, count: 1, location: 'Bank');
       expect(e.isBound(noSellMeta), isFalse);
       expect(e.isSellable(noSellMeta), isTrue);
+    });
+
+    test('SoulbindOnAcquire counts as bound without stack binding', () {
+      const soulMeta = ItemMeta(
+          id: 13, name: 'Bound on acquire', iconUrl: '',
+          soulbindOnAcquire: true);
+      const e = InventoryEntry(itemId: 13, count: 1, location: 'Bank');
+      expect(e.isBound(soulMeta), isTrue);
+      expect(e.isSellable(soulMeta), isFalse);
+    });
+
+    test('SoulBindOnUse alone does not bind an unused copy', () {
+      // SoulBindOnUse is not parsed into a bound flag (unlike
+      // SoulbindOnAcquire): an unused copy is still sellable, the same
+      // as AccountBindOnUse items like Quip.
+      final useMeta = ItemMeta.fromJson({
+        'id': 14,
+        'name': 'Binds on use',
+        'flags': ['SoulBindOnUse'],
+      });
+      const e = InventoryEntry(itemId: 14, count: 1, location: 'Bank');
+      expect(e.isBound(useMeta), isFalse);
+      expect(e.isSellable(useMeta), isTrue);
     });
 
     test('unbound item without NoSell is sellable', () {
