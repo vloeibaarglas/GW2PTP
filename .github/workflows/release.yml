@@ -10,8 +10,9 @@
 # pubspec.yaml stays manual.
 #
 # Signing: release builds are signed with the release key. The workflow
-# restores it from repo secrets (see below) and writes android/key.properties
-# for Gradle. That key is the identity of every installed build — same key
+# restores the keystore to android/app/release.keystore (Gradle resolves
+# storeFile relative to the app module) and writes android/key.properties.
+# That key is the identity of every installed build — same key
 # => the APK installs as an update. Required secrets:
 #   ANDROID_KEYSTORE_BASE64  — base64 of the release keystore file
 #   ANDROID_KEYSTORE_PASSWORD — keystore + key password
@@ -63,14 +64,14 @@ jobs:
             echo "::error::ANDROID_KEYSTORE_BASE64 secret is not set (see workflow header)."
             exit 1
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > android/release.keystore
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
           cat > android/key.properties <<EOF
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyPassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           storeFile=release.keystore
           EOF
-          chmod 600 android/key.properties android/release.keystore
+          chmod 600 android/key.properties android/app/release.keystore
 
       - name: Bump versionCode from run number
         run: |
