@@ -1,13 +1,25 @@
 # Release APK — manual trigger only.
 #
 # This workflow NEVER runs on push/PR ("leave it off for automated builds").
-# Trigger it by hand from the Actions tab for a release (e.g. v0.1):
-# it lints, tests, bumps the versionCode from the run number, builds the
-# release APK, and uploads it as an artifact with a hash-stamped filename
-# (gw2-ptp-<sha8>.apk) plus a .sha256 file. The versionCode bump guarantees
-# every release installs as an update over the previous one (Android
-# requires a strictly increasing versionCode); the versionName in
-# pubspec.yaml stays manual.
+# Trigger it by hand from the Actions tab for a release:
+# it lints, tests, resolves the version, builds the release APK, and
+# PUBLISHES it as a GitHub Release with the APK + .sha256 attached.
+#
+# Versioning (automatic, no pubspec edit needed):
+# - Leave the release_name input empty: the workflow takes the latest
+#   release tag and bumps the patch number (v0.1 -> v0.1.1 -> v0.1.2 ...),
+#   and stamps that as the versionName in the built APK.
+# - Type a tag (e.g. v0.2, v1.0) to cut that version instead; it becomes
+#   both the release tag and the versionName (v1.0 -> versionName 1.0.0).
+# The versionCode is bumped from the run number, which guarantees every
+# release installs as an update over the previous one (Android requires
+# a strictly increasing versionCode).
+#
+# Release body (automatic): the full commit SHA the build came from, the
+# APK's SHA-256, and a log of every commit since the previous release tag
+# as "- <short hash> <subject>". The APK filename itself is hash-stamped
+# (gw2-ptp-<sha8>.apk, first 8 of the APK's SHA-256), so the build is
+# identified by hash in the filename, the body, and the tag's commit.
 #
 # Signing: release builds are signed with the release key. The workflow
 # restores the keystore to android/app/release.keystore (Gradle resolves
@@ -25,15 +37,48 @@ on:
   workflow_dispatch:
     inputs:
       release_name:
-        description: 'Release name (e.g. v0.1)'
+        description: 'Release tag (e.g. v0.2, v1.0). Leave empty to auto-bump the patch version from the latest release.'
         required: false
-        default: 'manual'
+        default: ''
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | head -1)
+          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ inputs.release_name }}" ]; then
+            TAG="${{ inputs.release_name }}"
+          elif [ -z "$PREV_TAG" ]; then
+            TAG="v0.1.0"
+          else
+            # Bump the patch number (pad to 3 components first):
+            # v0.1 -> v0.1.1, v0.1.1 -> v0.1.2, v1.0 -> v1.0.1
+            TAG=$(echo "$PREV_TAG" | python3 -c "
+          import sys
+          t = sys.stdin.read().strip().lstrip('v')
+          parts = [int(p) for p in t.split('.')]
+          while len(parts) < 3:
+              parts.append(0)
+          parts[-1] += 1
+          print('v' + '.'.join(str(p) for p in parts))
+          ")
+          fi
+          # versionName: tag without the 'v', padded to three components (v1.0 -> 1.0.0)
+          VERSION_NAME=$(echo "$TAG" | sed 's/^v//' | awk -F. '{printf "%s.%s.%s", $1, ($2 == "" ? 0 : $2), ($3 == "" ? 0 : $3)}')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $TAG (previous: ${PREV_TAG:-none}), versionName: $VERSION_NAME"
+
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -73,14 +118,14 @@ jobs:
           EOF
           chmod 600 android/key.properties android/app/release.keystore
 
-      - name: Bump versionCode from run number
+      - name: Stamp version from resolved tag
         run: |
           python3 - <<'EOF'
           import re
           p = 'pubspec.yaml'
           s = open(p).read()
           s2 = re.sub(r'(?m)^version:\s*(\S+)\+(\d+)\s*$',
-                      r'version: \1+${{ github.run_number }}', s)
+                      r'version: ${{ steps.version.outputs.version_name }}+${{ github.run_number }}', s)
           assert s2 != s, 'version line not found in pubspec.yaml'
           open(p, 'w').write(s2)
           print('version now:', [l for l in s2.splitlines() if l.startswith('version:')][0])
@@ -107,8 +152,38 @@ jobs:
             build/app/outputs/flutter-apk/${{ env.APK }}
             build/app/outputs/flutter-apk/${{ env.APK }}.sha256
 
+      - name: Write release notes
+        run: |
+          PREV_TAG="${{ steps.version.outputs.prev_tag }}"
+          {
+            echo "Built from commit ${GITHUB_SHA}."
+            echo "APK: ${{ env.APK }} (SHA-256: ${{ env.SHA256 }})"
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              echo "Commits since $PREV_TAG:"
+              git log "$PREV_TAG..HEAD" --format='- %h %s'
+            else
+              echo "Commits:"
+              git log --format='- %h %s'
+            fi
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --notes-file release-notes.md \
+            "build/app/outputs/flutter-apk/${{ env.APK }}" \
+            "build/app/outputs/flutter-apk/${{ env.APK }}.sha256"
+
       - name: Summary
         run: |
-          echo "### ${{ inputs.release_name }} built" >> "$GITHUB_STEP_SUMMARY"
+          echo "### ${{ steps.version.outputs.tag }} built and published" >> "$GITHUB_STEP_SUMMARY"
+          echo "APK: \`${{ env.APK }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-256: \`${{ env.SHA256 }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
           echo "APK: \`${{ env.APK }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "SHA-256: \`${{ env.SHA256 }}\`" >> "$GITHUB_STEP_SUMMARY"
