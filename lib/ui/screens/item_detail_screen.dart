@@ -769,12 +769,9 @@ class _HistoryCardState extends State<_HistoryCard> {
 
   void _pick(Offset local, double width, int count) {
     if (count < 2) return;
-    const leftPad = 48.0;
-    const rightPad = 8.0;
-    final plotW = width - leftPad - rightPad;
-    final i =
-        ((local.dx - leftPad) / plotW * (count - 1)).round().clamp(0, count - 1);
-    setState(() => _selected = i);
+    // Map against the drawn points, not the full history (see
+    // priceChartPickIndex): the painter downsamples long histories.
+    setState(() => _selected = priceChartPickIndex(local.dx, width, count));
   }
 
   @override
@@ -849,6 +846,27 @@ class _HistoryCardState extends State<_HistoryCard> {
   }
 }
 
+/// Drawn-point index nearest the touch at [dx] in a plot [width] wide
+/// holding [count] history points.
+///
+/// Must map against the points the painter actually draws, not the full
+/// history: the painter downsamples long histories to
+/// [_ChartPainter.maxPoints], so mapping against the full count picks a
+/// point far to the right of the touch (by the downsample factor) and,
+/// past ~1/factor across the plot, past the last drawn point entirely —
+/// the tooltip races ahead of the finger and off the panel. Clamped to
+/// the drawn range, so the tooltip stops at the first/last drawn point.
+int priceChartPickIndex(double dx, double width, int count) {
+  final drawn = count > _ChartPainter.maxPoints ? _ChartPainter.maxPoints : count;
+  if (drawn < 2) return 0;
+  final plotW = width - _ChartPainter.leftPad - _ChartPainter.rightPad;
+  var i =
+      ((dx - _ChartPainter.leftPad) / plotW * (drawn - 1)).round();
+  if (i < 0) i = 0;
+  if (i > drawn - 1) i = drawn - 1;
+  return i;
+}
+
 /// Price chart with y (price) and x (date) axes, plus a touch crosshair.
 class _ChartPainter extends CustomPainter {
   final List<PricePoint> points;
@@ -856,18 +874,21 @@ class _ChartPainter extends CustomPainter {
 
   _ChartPainter(this.points, this.selected);
 
-  static const _leftPad = 48.0;
-  static const _rightPad = 8.0;
+  static const leftPad = 48.0;
+  static const rightPad = 8.0;
   static const _topPad = 10.0;
   static const _bottomPad = 22.0;
+
+  /// Most points the painter draws; longer histories are downsampled.
+  static const maxPoints = 400;
 
   @override
   void paint(Canvas canvas, Size size) {
     // Downsample to at most ~400 points so years of history stay cheap.
     List<PricePoint> data = points;
-    if (points.length > 400) {
-      final step = points.length / 400;
-      data = [for (var i = 0; i < 400; i++) points[(i * step).floor()]];
+    if (points.length > maxPoints) {
+      final step = points.length / maxPoints;
+      data = [for (var i = 0; i < maxPoints; i++) points[(i * step).floor()]];
     }
     if (data.length < 2) return;
 
@@ -884,9 +905,9 @@ class _ChartPainter extends CustomPainter {
     hi += pad;
     if (hi <= lo) hi = lo + 1;
 
-    final plotW = size.width - _leftPad - _rightPad;
+    final plotW = size.width - leftPad - rightPad;
     final plotH = size.height - _topPad - _bottomPad;
-    double x(int i) => _leftPad + i / (data.length - 1) * plotW;
+    double x(int i) => leftPad + i / (data.length - 1) * plotW;
     double y(int v) => _topPad + (1 - (v - lo) / (hi - lo)) * plotH;
 
     final grid = Paint()
@@ -907,7 +928,7 @@ class _ChartPainter extends CustomPainter {
       final v = (lo + (hi - lo) * t / 3).round();
       final yy = y(v);
       canvas.drawLine(
-          Offset(_leftPad, yy), Offset(size.width - _rightPad, yy), grid);
+          Offset(leftPad, yy), Offset(size.width - rightPad, yy), grid);
       drawLabel(_axisCoins(v), 2, yy);
     }
     // X axis: 4 date ticks.
