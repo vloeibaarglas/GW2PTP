@@ -18,6 +18,7 @@ import '../../api/models.dart';
 import '../../store/item_detail_cache.dart';
 import '../../state/app_state.dart';
 import '../../util/coins.dart';
+import '../../util/craft_pricing.dart';
 import '../widgets/coins_text.dart';
 import '../widgets/item_icon.dart';
 
@@ -1076,23 +1077,11 @@ class _CraftCard extends StatelessWidget {
       );
     } else {
       final recipe = recipes.first;
-      final prices = ingredientPrices ?? const <int, CommerceQuote>{};
-      var cost = 0;
-      var priced = 0;
-      for (final ing in recipe.ingredients) {
-        final q = prices[ing.itemId];
-        if (q != null) {
-          cost += q.sellPrice * ing.count;
-          priced++;
-        }
-      }
-      final allPriced = priced == recipe.ingredients.length;
-      final q = quote;
-      final outputValue = q == null
-          ? null
-          : (q.sellPrice * recipe.outputCount * 0.85).round();
-      final margin =
-          (outputValue != null && allPriced) ? outputValue - cost : null;
+      final pricing = CraftPricing.compute(
+        recipe: recipe,
+        quote: quote,
+        ingredientPrices: ingredientPrices ?? const <int, CommerceQuote>{},
+      );
       final disc = recipe.disciplines.map(_humanize).join(' · ');
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1104,36 +1093,64 @@ class _CraftCard extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 8),
-          for (final ing in recipe.ingredients)
+          for (final line in pricing.lines)
             _KvRow(
               label:
-                  '×${ing.count} ${_ingredientName(app, ing.itemId)}',
-              value: prices[ing.itemId] == null
-                  ? const Text('—')
-                  : CoinsText(prices[ing.itemId]!.sellPrice * ing.count),
+                  '×${line.ingredient.count} ${_ingredientName(app, line.ingredient.itemId)}',
+              value: _IngredientPriceLines(line: line),
             ),
           const Divider(),
-          _KvRow(
-            label: 'Craft cost (instant buy)',
-            value: allPriced
-                ? CoinsText(cost,
-                    style: const TextStyle(fontWeight: FontWeight.bold))
-                : const Text('Partial'),
-          ),
-          if (outputValue != null)
+          if (quote != null)
             _KvRow(
-              label: 'Sells for (net)',
-              value: CoinsText(outputValue),
+              label: 'Item Buy / Sell',
+              value: _BuySellPair(
+                buy: pricing.itemBuy == null
+                    ? const Text('—')
+                    : CoinsText(pricing.itemBuy!),
+                sell: pricing.itemSell == null
+                    ? const Text('—')
+                    : CoinsText(pricing.itemSell!),
+              ),
             ),
-          if (margin != null)
+          _KvRow(
+            label: 'Craft cost Buy / Sell',
+            value: _BuySellPair(
+              buy: pricing.costBuy == null
+                  ? const Text('Partial')
+                  : CoinsText(pricing.costBuy!,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+              sell: pricing.costSell == null
+                  ? const Text('Partial')
+                  : CoinsText(pricing.costSell!,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+          if (pricing.netBuy != null || pricing.netSell != null)
             _KvRow(
-              label: 'Craft margin',
-              value: CoinsText(
-                margin,
-                style: TextStyle(
-                  color: margin >= 0 ? Colors.green : Colors.red,
-                  fontWeight: FontWeight.bold,
-                ),
+              label: 'Sells for (net) Buy / Sell',
+              value: _BuySellPair(
+                buy: pricing.netBuy == null
+                    ? const Text('—')
+                    : CoinsText(pricing.netBuy!),
+                sell: pricing.netSell == null
+                    ? const Text('—')
+                    : CoinsText(pricing.netSell!),
+              ),
+            ),
+          if (pricing.marginBuy != null || pricing.marginSell != null)
+            _KvRow(
+              label: 'Craft margin Buy / Sell',
+              value: _BuySellPair(
+                buy: _marginValue(pricing.marginBuy),
+                sell: _marginValue(pricing.marginSell),
+              ),
+            ),
+          if (pricing.roiBuy != null || pricing.roiSell != null)
+            _KvRow(
+              label: 'ROI %',
+              value: _BuySellPair(
+                buy: _roiValue(pricing.roiBuy, pricing.marginBuy),
+                sell: _roiValue(pricing.roiSell, pricing.marginSell),
               ),
             ),
         ],
@@ -1150,6 +1167,106 @@ class _CraftCard extends StatelessWidget {
       // Fall through to the id label.
     }
     return 'Item $id';
+  }
+
+  static Widget _marginValue(int? margin) {
+    if (margin == null) return const Text('—');
+    return CoinsText(
+      margin,
+      style: TextStyle(
+        color: margin >= 0 ? Colors.green : Colors.red,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+
+  static Widget _roiValue(double? roi, int? margin) {
+    if (roi == null || margin == null) return const Text('—');
+    return Text(
+      '${(roi * 100).toStringAsFixed(1)}%',
+      style: TextStyle(
+        color: margin >= 0 ? Colors.green : Colors.red,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+}
+
+/// One-line "Buy … · Sell …" pair for the Craft card summary rows.
+class _BuySellPair extends StatelessWidget {
+  final Widget buy;
+  final Widget sell;
+
+  const _BuySellPair({required this.buy, required this.sell});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Buy '),
+        buy,
+        const Text(' · Sell '),
+        sell,
+      ],
+    );
+  }
+}
+
+/// Two-line "Buy … / Sell …" value for one ingredient row, with the Vendor
+/// marker on the first line the vendor price was used for.
+class _IngredientPriceLines extends StatelessWidget {
+  final CraftIngredientLine line;
+
+  const _IngredientPriceLines({required this.line});
+
+  @override
+  Widget build(BuildContext context) {
+    final buyLine = line.buyLine;
+    final sellLine = line.sellLine;
+    // One marker per row, on the first line the vendor price was used for
+    // (Buy preferred).
+    final buyMarker = line.vendorUsedBuy;
+    final sellMarker = line.vendorUsedSell && !line.vendorUsedBuy;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Buy '),
+            if (buyLine != null) CoinsText(buyLine) else const Text('—'),
+            if (buyMarker) const _VendorTag(),
+          ],
+        ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Sell '),
+            if (sellLine != null) CoinsText(sellLine) else const Text('—'),
+            if (sellMarker) const _VendorTag(),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Compact marker for an ingredient line priced from a vendor.
+class _VendorTag extends StatelessWidget {
+  const _VendorTag();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(left: 6),
+      child: Chip(
+        label: Text('Vendor', style: TextStyle(fontSize: 11)),
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        labelPadding: EdgeInsets.symmetric(horizontal: 6),
+      ),
+    );
   }
 }
 
