@@ -306,8 +306,6 @@ class _SectionNote extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          const Icon(Icons.info_outline, size: 18),
-          const SizedBox(width: 8),
           Expanded(child: Text(message)),
           if (onRetry != null)
             TextButton(onPressed: onRetry, child: const Text('Retry')),
@@ -1100,59 +1098,7 @@ class _CraftCard extends StatelessWidget {
               value: _IngredientPriceLines(line: line),
             ),
           const Divider(),
-          if (quote != null)
-            _KvRow(
-              label: 'Item Buy / Sell',
-              value: _BuySellPair(
-                buy: pricing.itemBuy == null
-                    ? const Text('—')
-                    : CoinsText(pricing.itemBuy!),
-                sell: pricing.itemSell == null
-                    ? const Text('—')
-                    : CoinsText(pricing.itemSell!),
-              ),
-            ),
-          _KvRow(
-            label: 'Craft cost Buy / Sell',
-            value: _BuySellPair(
-              buy: pricing.costBuy == null
-                  ? const Text('Partial')
-                  : CoinsText(pricing.costBuy!,
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-              sell: pricing.costSell == null
-                  ? const Text('Partial')
-                  : CoinsText(pricing.costSell!,
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ),
-          if (pricing.netBuy != null || pricing.netSell != null)
-            _KvRow(
-              label: 'Sells for (net) Buy / Sell',
-              value: _BuySellPair(
-                buy: pricing.netBuy == null
-                    ? const Text('—')
-                    : CoinsText(pricing.netBuy!),
-                sell: pricing.netSell == null
-                    ? const Text('—')
-                    : CoinsText(pricing.netSell!),
-              ),
-            ),
-          if (pricing.marginBuy != null || pricing.marginSell != null)
-            _KvRow(
-              label: 'Craft margin Buy / Sell',
-              value: _BuySellPair(
-                buy: _marginValue(pricing.marginBuy),
-                sell: _marginValue(pricing.marginSell),
-              ),
-            ),
-          if (pricing.roiBuy != null || pricing.roiSell != null)
-            _KvRow(
-              label: 'ROI %',
-              value: _BuySellPair(
-                buy: _roiValue(pricing.roiBuy, pricing.marginBuy),
-                sell: _roiValue(pricing.roiSell, pricing.marginSell),
-              ),
-            ),
+          _CraftSummaryTable(pricing: pricing, quote: quote),
         ],
       );
     }
@@ -1192,29 +1138,125 @@ class _CraftCard extends StatelessWidget {
   }
 }
 
-/// One-line "Buy … · Sell …" pair for the Craft card summary rows.
-class _BuySellPair extends StatelessWidget {
-  final Widget buy;
-  final Widget sell;
+/// Bid/Ask table for the Craft card summary: one header row plus one row
+/// per metric, so "Buy"/"Sell" is said once instead of on every row. The
+/// Bid and Ask columns share one fixed flex each, so prices line up across
+/// rows whether they are copper, silver, or gold — the old "Buy … · Sell …"
+/// line put its separator dot at a different x on every row.
+class _CraftSummaryTable extends StatelessWidget {
+  final CraftPricing pricing;
+  final CommerceQuote? quote;
 
-  const _BuySellPair({required this.buy, required this.sell});
+  const _CraftSummaryTable({required this.pricing, required this.quote});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    final theme = Theme.of(context);
+    final headerStyle = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w600,
+    );
+    return Table(
+      columnWidths: const {
+        0: FlexColumnWidth(3),
+        1: FlexColumnWidth(2),
+        2: FlexColumnWidth(2),
+      },
+      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
       children: [
-        const Text('Buy '),
-        buy,
-        const Text(' · Sell '),
-        sell,
+        TableRow(
+          children: [
+            const SizedBox.shrink(),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text('Bid',
+                  textAlign: TextAlign.right, style: headerStyle),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text('Ask',
+                  textAlign: TextAlign.right, style: headerStyle),
+            ),
+          ],
+        ),
+        if (quote != null)
+          _row(
+            context,
+            'Item',
+            pricing.itemBuy == null
+                ? const Text('—')
+                : CoinsText(pricing.itemBuy!),
+            pricing.itemSell == null
+                ? const Text('—')
+                : CoinsText(pricing.itemSell!),
+          ),
+        _row(
+          context,
+          'Craft cost',
+          pricing.costBuy == null
+              ? const Text('Partial')
+              : CoinsText(pricing.costBuy!,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+          pricing.costSell == null
+              ? const Text('Partial')
+              : CoinsText(pricing.costSell!,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        if (pricing.netBuy != null || pricing.netSell != null)
+          _row(
+            context,
+            'Sells for (net)',
+            pricing.netBuy == null
+                ? const Text('—')
+                : CoinsText(pricing.netBuy!),
+            pricing.netSell == null
+                ? const Text('—')
+                : CoinsText(pricing.netSell!),
+          ),
+        if (pricing.marginBuy != null || pricing.marginSell != null)
+          _row(
+            context,
+            'Craft margin',
+            _CraftCard._marginValue(pricing.marginBuy),
+            _CraftCard._marginValue(pricing.marginSell),
+          ),
+        if (pricing.roiBuy != null || pricing.roiSell != null)
+          _row(
+            context,
+            'ROI %',
+            _CraftCard._roiValue(pricing.roiBuy, pricing.marginBuy),
+            _CraftCard._roiValue(pricing.roiSell, pricing.marginSell),
+          ),
+      ],
+    );
+  }
+
+  TableRow _row(BuildContext context, String label, Widget buy, Widget sell) {
+    const cellPadding = EdgeInsets.symmetric(vertical: 5);
+    return TableRow(
+      children: [
+        Padding(
+          padding: cellPadding,
+          child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+        ),
+        Padding(
+          padding: cellPadding,
+          child: Align(alignment: Alignment.centerRight, child: buy),
+        ),
+        Padding(
+          padding: cellPadding,
+          child: Align(alignment: Alignment.centerRight, child: sell),
+        ),
       ],
     );
   }
 }
 
 /// Two-line "Buy … / Sell …" value for one ingredient row, with the Vendor
-/// marker on the first line the vendor price was used for.
+/// marker left of the label on the first line the vendor price was used
+/// for (Buy preferred — it is that line's Vendor Buy). The other line keeps
+/// an invisible marker of the same width, so the Buy and Sell labels — and
+/// the prices, right-aligned — stay in line.
 class _IngredientPriceLines extends StatelessWidget {
   final CraftIngredientLine line;
 
@@ -1234,17 +1276,21 @@ class _IngredientPriceLines extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (buyMarker) const _VendorTag(),
+            if (sellMarker)
+              const Opacity(opacity: 0, child: _VendorTag()),
             const Text('Buy '),
             if (buyLine != null) CoinsText(buyLine) else const Text('—'),
-            if (buyMarker) const _VendorTag(),
           ],
         ),
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (sellMarker) const _VendorTag(),
+            if (buyMarker)
+              const Opacity(opacity: 0, child: _VendorTag()),
             const Text('Sell '),
             if (sellLine != null) CoinsText(sellLine) else const Text('—'),
-            if (sellMarker) const _VendorTag(),
           ],
         ),
       ],
@@ -1259,7 +1305,7 @@ class _VendorTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Padding(
-      padding: EdgeInsets.only(left: 6),
+      padding: EdgeInsets.only(right: 6),
       child: Chip(
         label: Text('Vendor', style: TextStyle(fontSize: 11)),
         visualDensity: VisualDensity.compact,
