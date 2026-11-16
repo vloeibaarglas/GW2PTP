@@ -1092,10 +1092,12 @@ class _CraftCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           for (final line in pricing.lines)
-            _KvRow(
+            CraftIngredientRow(
               label:
                   '×${line.ingredient.count} ${_ingredientName(app, line.ingredient.itemId)}',
-              value: _IngredientPriceLines(line: line),
+              buyLine: line.buyLine,
+              sellLine: line.sellLine,
+              vendorUsed: line.vendorUsed,
             ),
           const Divider(),
           _CraftSummaryTable(pricing: pricing, quote: quote),
@@ -1252,60 +1254,68 @@ class _CraftSummaryTable extends StatelessWidget {
   }
 }
 
-/// Two-line "Buy … / Sell …" value for one ingredient row, with the Vendor
-/// marker left of the label on the first line the vendor price was used
-/// for (Buy preferred — it is that line's Vendor Buy). The other line keeps
-/// an invisible marker of the same width, so the Buy and Sell labels — and
-/// the prices, right-aligned — stay in line.
-class _IngredientPriceLines extends StatelessWidget {
-  final CraftIngredientLine line;
+/// One ingredient of the Craft card, stacked (sketch Option A): the name
+/// takes the full width on its own line and wraps to a second line when long,
+/// with the Vendor chip right after it; Buy and Sell share one right-aligned
+/// line underneath. The chip lives on the name line, never in the price flow,
+/// so prices stay put and every row gets the same vertical padding whether
+/// its name wraps or not.
+class CraftIngredientRow extends StatelessWidget {
+  final String label;
+  final int? buyLine;
+  final int? sellLine;
+  final bool vendorUsed;
 
-  const _IngredientPriceLines({required this.line});
+  const CraftIngredientRow({
+    super.key,
+    required this.label,
+    required this.buyLine,
+    required this.sellLine,
+    required this.vendorUsed,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final buyLine = line.buyLine;
-    final sellLine = line.sellLine;
-    // One marker per row, on the first line the vendor price was used for
-    // (Buy preferred).
-    final buyMarker = line.vendorUsedBuy;
-    final sellMarker = line.vendorUsedSell && !line.vendorUsedBuy;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (buyMarker) const _VendorTag(),
-            if (sellMarker)
-              const Opacity(opacity: 0, child: _VendorTag()),
-            const Text('Buy '),
-            if (buyLine != null) CoinsText(buyLine) else const Text('—'),
-          ],
-        ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (sellMarker) const _VendorTag(),
-            if (buyMarker)
-              const Opacity(opacity: 0, child: _VendorTag()),
-            const Text('Sell '),
-            if (sellLine != null) CoinsText(sellLine) else const Text('—'),
-          ],
-        ),
-      ],
+    final buy = buyLine;
+    final sell = sellLine;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(label, style: Theme.of(context).textTheme.bodyMedium),
+              if (vendorUsed) const _VendorTag(),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              const Text('Buy '),
+              if (buy != null) CoinsText(buy) else const Text('—'),
+              const Text(' · '),
+              const Text('Sell '),
+              if (sell != null) CoinsText(sell) else const Text('—'),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-/// Compact marker for an ingredient line priced from a vendor.
+/// Compact marker for an ingredient priced from a vendor. It trails the
+/// ingredient name, so it never widens the price line.
 class _VendorTag extends StatelessWidget {
   const _VendorTag();
 
   @override
   Widget build(BuildContext context) {
     return const Padding(
-      padding: EdgeInsets.only(right: 6),
+      padding: EdgeInsets.only(left: 6),
       child: Chip(
         label: Text('Vendor', style: TextStyle(fontSize: 11)),
         visualDensity: VisualDensity.compact,
