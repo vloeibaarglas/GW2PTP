@@ -8,9 +8,11 @@ import 'package:provider/provider.dart';
 
 import '../../api/permissions.dart';
 import '../../state/app_state.dart';
+import '../../state/app_update_state.dart';
 import '../widgets/coins_text.dart';
 import '../widgets/notice_banner.dart';
 import '../widgets/stale_banner.dart';
+import '../widgets/update_button.dart';
 import 'held_screen.dart';
 import 'inventory_screen.dart';
 import 'orders_screen.dart';
@@ -32,6 +34,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Auto-check for app updates on open when the toggle is on and a
+    // check is due (3 days); a no-op otherwise.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<AppUpdateState>().maybeAutoCheck();
+    });
   }
 
   @override
@@ -45,6 +52,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       // ignore: discarded_futures
       context.read<AppState>().onResumed();
+      // ignore: discarded_futures
+      context.read<AppUpdateState>().maybeAutoCheck();
     }
   }
 
@@ -64,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
           ),
+          const UpdateButton(),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',

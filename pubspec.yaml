@@ -30,6 +30,8 @@ dependencies:
   # Pinned to the 0.9.x line: flutter_local_notifications 17.x requires
   # timezone ^0.9.0, and 0.10+/0.11+ break version solving.
   timezone: ^0.9.4
+  package_info_plus: ^9.0.1
+  crypto: ^3.0.8
   # Battery-optimization exemption prompt for active sync mode.
   # Battery optimization exemption is implemented natively via MainActivity.kt
   # (the disable_battery_optimization plugin is unmaintained; its Android

@@ -15,6 +15,7 @@ import '../../util/clock_time.dart';
 import '../../util/day_label.dart';
 import '../../util/numbers.dart';
 import '../../util/time_ago.dart';
+import '../widgets/update_button.dart';
 
 class SettingsScreen extends StatefulWidget {
   /// When true the screen is the first-run gate: no back navigation until
@@ -140,6 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       appBar: AppBar(
         title: const Text('Settings'),
         automaticallyImplyLeading: !widget.firstRun,
+        actions: const [UpdateButton()],
       ),
       body: SafeArea(
         top: false,

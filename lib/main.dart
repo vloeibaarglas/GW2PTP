@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api/gw2_client.dart';
 import 'state/app_state.dart';
+import 'state/app_update_state.dart';
 import 'store/key_store.dart';
 import 'sync/background_sync.dart';
 import 'sync/fill_notifier.dart';
@@ -60,14 +61,23 @@ class TpConsoleApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AppState(
-        keys: keys,
-        api: api,
-        prefs: prefs,
-        notifier: notifier,
-        syncService: syncService,
-      )..init(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => AppState(
+            keys: keys,
+            api: api,
+            prefs: prefs,
+            notifier: notifier,
+            syncService: syncService,
+          )..init(),
+        ),
+        // App-update state is separate from the GW2 data state: it owns
+        // the release check, the 3-day auto-check, and the install flow.
+        ChangeNotifierProvider(
+          create: (_) => AppUpdateState(prefs: prefs)..init(),
+        ),
+      ],
       child: Consumer<AppState>(
         builder: (_, app, __) => MaterialApp(
           title: 'GW2 Personal Trading Post',

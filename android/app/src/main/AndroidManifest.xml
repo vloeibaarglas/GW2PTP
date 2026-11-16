@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- App updates: the system installer opens for a downloaded APK. The
+         user confirms the install in Android's own prompt. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
         android:label="GW2 PTP"
         android:name="${applicationName}"
@@ -39,6 +42,19 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- FileProvider for the downloaded update APK: the system
+             installer reads it via a content URI (file:// is refused
+             on Android 7+). Serves only the cache dir, where the APK
+             is downloaded. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <!-- Foreground service for Active sync mode (flutter_foreground_task).
              Do not change the service name. -->
         <service
