@@ -149,6 +149,7 @@ void main() {
           .setMockMethodCallHandler(
         const MethodChannel('com.vloeibaarglas.gw2tp/install'),
         (call) async {
+          if (call.method == 'canInstall') return true;
           if (call.method == 'installApk') {
             installedPath = (call.arguments as Map)['path'] as String;
             return true;
@@ -197,6 +198,93 @@ void main() {
       expect(ok, isFalse);
       expect(state.status, UpdateStatus.failed);
       expect(state.error, contains('SHA-256'));
+    });
+
+    test('install without the unknown-apps grant opens settings, no download',
+        () async {
+      var downloads = 0;
+      final client = MockClient((request) async {
+        final url = request.url.toString();
+        if (url.contains('api.github.com')) {
+          return http.Response(jsonEncode(releaseJson()), 200);
+        }
+        downloads++;
+        return http.Response.bytes(utf8.encode('fake-apk-bytes'), 200);
+      });
+      var settingsOpened = false;
+      var installApkCalled = false;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('com.vloeibaarglas.gw2tp/install'),
+        (call) async {
+          if (call.method == 'canInstall') return false;
+          if (call.method == 'openInstallSettings') {
+            settingsOpened = true;
+            return true;
+          }
+          if (call.method == 'installApk') installApkCalled = true;
+          return null;
+        },
+      );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+          const MethodChannel('com.vloeibaarglas.gw2tp/install'),
+          null,
+        );
+      });
+      final state = stateWith(client);
+      await state.check();
+      expect(state.status, UpdateStatus.available);
+
+      final ok = await state.install();
+
+      expect(ok, isFalse);
+      expect(settingsOpened, isTrue);
+      expect(downloads, 0);
+      expect(installApkCalled, isFalse);
+      expect(state.status, UpdateStatus.available);
+      expect(state.error, contains('Install unknown apps'));
+    });
+
+    test('install reports failure when the installer will not open',
+        () async {
+      final apkBytes = utf8.encode('fake-apk-bytes');
+      final sha = sha256.convert(apkBytes).toString();
+      final client = MockClient((request) async {
+        final url = request.url.toString();
+        if (url.contains('api.github.com')) {
+          return http.Response(jsonEncode(releaseJson()), 200);
+        }
+        if (url.endsWith('.sha256')) {
+          return http.Response('$sha  gw2-ptp-deadbeef.apk\n', 200);
+        }
+        return http.Response.bytes(apkBytes, 200);
+      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('com.vloeibaarglas.gw2tp/install'),
+        (call) async {
+          if (call.method == 'canInstall') return true;
+          if (call.method == 'installApk') return false;
+          return null;
+        },
+      );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+          const MethodChannel('com.vloeibaarglas.gw2tp/install'),
+          null,
+        );
+      });
+      final state = stateWith(client);
+      await state.check();
+
+      final ok = await state.install();
+
+      expect(ok, isFalse);
+      expect(state.status, UpdateStatus.failed);
+      expect(state.error, contains('Could not open the Android installer'));
     });
   });
 }

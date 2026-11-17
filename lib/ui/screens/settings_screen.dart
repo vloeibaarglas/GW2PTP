@@ -564,6 +564,24 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ],
             ),
+            // E.g. the "Install unknown apps" permission message from a
+            // previous Install tap: the download never started, so the
+            // reason belongs here next to the button, not hidden.
+            if (updates.error != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.warning_amber_outlined, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      updates.error!,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (release.notes.trim().isNotEmpty) ...[
               const SizedBox(height: 8),
               ExpansionTile(
@@ -610,17 +628,40 @@ class _SettingsScreenState extends State<SettingsScreen>
           ],
         );
       case UpdateStatus.handedToInstaller:
-        return const Row(
+        // The error row is defense in depth: install() reports a failed
+        // handoff as failed now, but if one ever slips through, the
+        // screen must not claim Android will ask when it will not.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.check_circle_outline, size: 16),
-            SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                'Download complete — Android will ask you to confirm '
-                'the install.',
-                style: TextStyle(fontSize: 12),
-              ),
+            const Row(
+              children: [
+                Icon(Icons.check_circle_outline, size: 16),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Download complete — Android will ask you to confirm '
+                    'the install.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
             ),
+            if (updates.error != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.warning_amber_outlined, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      updates.error!,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         );
       case UpdateStatus.failed:

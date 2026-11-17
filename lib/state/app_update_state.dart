@@ -143,9 +143,37 @@ class AppUpdateState extends ChangeNotifier {
   /// `.sha256` asset when one exists, then hands it to the system
   /// installer. Returns false (and sets [error]) when anything fails;
   /// the install itself is the user's call in the Android prompt.
+  ///
+  /// Android 8+ only lets an app start an install after the user grants
+  /// it "Install unknown apps" in system settings. That grant is checked
+  /// first: without it the PackageInstaller silently drops the install
+  /// intent (no prompt, no error), so instead of downloading a 56 MB
+  /// APK to nowhere, the system settings page opens and the user is told
+  /// to allow it and tap Install again.
   Future<bool> install() async {
     final release = latest;
     if (release == null || status == UpdateStatus.downloading) {
+      return false;
+    }
+    bool allowed;
+    try {
+      allowed = await AppInstall.canInstall;
+    } catch (_) {
+      // Channel unavailable (tests without the mock, old builds):
+      // proceed as before and let the handoff report the real result.
+      allowed = true;
+    }
+    if (!allowed) {
+      try {
+        await AppInstall.openInstallSettings();
+      } catch (_) {
+        // Settings page failed to open; the message below still tells
+        // the user what to allow and where.
+      }
+      status = UpdateStatus.available;
+      error = 'Allow this app to install apps in system settings '
+          '(“Install unknown apps”), then tap Install update again.';
+      notifyListeners();
       return false;
     }
     status = UpdateStatus.downloading;
@@ -185,13 +213,17 @@ class AppUpdateState extends ChangeNotifier {
         }
       }
       final started = await AppInstall.installApk(file.path);
-      status = UpdateStatus.handedToInstaller;
       downloadProgress = null;
       if (!started) {
+        // Previously this still reported handedToInstaller, and the UI
+        // never renders the error in that branch — the screen claimed
+        // Android would ask while nothing happened. Report the failure.
+        status = UpdateStatus.failed;
         error = 'Could not open the Android installer.';
         notifyListeners();
         return false;
       }
+      status = UpdateStatus.handedToInstaller;
       notifyListeners();
       return true;
     } catch (e) {

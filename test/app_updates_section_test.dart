@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gw2tp/state/app_update_state.dart';
+import 'package:provider/provider.dart';
 
 import 'fake_gw2_api.dart';
 import 'widget_test.dart' show pumpApp;
@@ -40,5 +42,32 @@ void main() {
       find.text('Checks every 3 days when you open the app.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('Settings gear shows a dot while an update is waiting',
+      (tester) async {
+    await pumpApp(tester, apiKey: 'test-key', api: FakeGw2Api());
+    await tester.pumpAndSettle();
+
+    const dot = Key('update-available-dot');
+    expect(find.byKey(dot), findsNothing);
+
+    // Simulate an auto-check find on the real state (no network).
+    final state = Provider.of<AppUpdateState>(
+      tester.element(find.byIcon(Icons.settings_outlined)),
+      listen: false,
+    );
+    state.status = UpdateStatus.available;
+    state.notifyListeners();
+    await tester.pump();
+
+    expect(find.byKey(dot), findsOneWidget);
+
+    // Back to up to date: the dot clears.
+    state.status = UpdateStatus.upToDate;
+    state.notifyListeners();
+    await tester.pump();
+
+    expect(find.byKey(dot), findsNothing);
   });
 }

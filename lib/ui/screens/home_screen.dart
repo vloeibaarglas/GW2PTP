@@ -59,6 +59,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    // Dot on the Settings gear while an update is waiting: auto-check
+    // only *finds* a release, so without this there is no prompt at all
+    // outside the Settings menu.
+    final updates = context.watch<AppUpdateState>();
+    final updateWaiting = updates.status == UpdateStatus.available;
     return Scaffold(
       appBar: AppBar(
         title: Text(_titles[_tab]),
@@ -77,8 +82,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.settings_outlined),
+                if (updateWaiting)
+                  Positioned(
+                    right: -1,
+                    top: -1,
+                    child: Container(
+                      key: const Key('update-available-dot'),
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.surface,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            tooltip: updateWaiting
+                ? 'Settings — update available'
+                : 'Settings',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const SettingsScreen()),
             ),
