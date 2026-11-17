@@ -64,10 +64,16 @@ class _OrderList extends StatelessWidget {
     final total = orders.fold<int>(0, (sum, o) => sum + o.totalValue);
     final rows = sortOrderRows(groupOrders(orders, grouping), sort);
 
+    // Revamp: the buy side talks about committed coin, not a listed
+    // price — summary 'Committed', listing-order sort 'Placed'.
+    final listedLabel = side == 'buy' ? 'Placed' : 'Listed';
+    final sortLabel =
+        sort == OrderSort.listed ? listedLabel : sort.label;
+
     return RefreshIndicator(
       onRefresh: state.refreshAll,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
         children: [
           Row(
             children: [
@@ -101,15 +107,15 @@ class _OrderList extends StatelessWidget {
               Expanded(
                 child: FilterDropdownChip<OrderSort>(
                   icon: Icons.sort,
-                  currentLabel: sort.label,
+                  currentLabel: sortLabel,
                   sheetTitle: 'Sort rows',
-                  options: const [
+                  options: [
                     FilterOption(
                       value: OrderSort.listed,
-                      label: 'Listed',
+                      label: listedLabel,
                       description: "The exchange's listing order",
                     ),
-                    FilterOption(
+                    const FilterOption(
                       value: OrderSort.priceDesc,
                       label: 'Price ↓',
                       description: 'Highest unit price first',
@@ -121,10 +127,10 @@ class _OrderList extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           ValueTile(
             labels: [
-              side == 'buy' ? 'Order Value' : 'Listed Value',
+              side == 'buy' ? 'Committed' : 'Listed Value',
               if (side == 'sell') 'Net Value',
             ],
             copperValues: [
@@ -132,14 +138,14 @@ class _OrderList extends StatelessWidget {
               if (side == 'sell') netOfFees(total),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           if (orders.isEmpty)
             EmptyState(
               side == 'buy' ? 'No open buy orders.' : 'No open sell orders.',
             ),
           for (final row in rows)
             Card(
-              margin: const EdgeInsets.only(bottom: 4),
+              margin: const EdgeInsets.only(bottom: 10),
               child: ItemTile(
                 itemId: row.itemId,
                 metaLookup: state.meta.lookup,
@@ -163,7 +169,7 @@ class _OrderList extends StatelessWidget {
     spans.add(const TextSpan(text: ' · '));
     if (side == 'buy') {
       spans.addAll([
-        const TextSpan(text: 'Order Value '),
+        const TextSpan(text: 'Committed '),
         ...coinSpans(row.total),
       ]);
     } else {

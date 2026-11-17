@@ -67,13 +67,6 @@ class AppUpdateState extends ChangeNotifier {
   String? error;
   double? downloadProgress;
 
-  /// True when a newer release is known and the user has not tapped Later
-  /// on it — drives the dot on the top-right update button.
-  bool get updateAvailable =>
-      status == UpdateStatus.available &&
-      latest != null &&
-      latest!.tag != settings.dismissedTag;
-
   /// "Last checked" label source; 0 means never checked.
   int get lastCheckAtMs => settings.lastCheckAtMs;
 
@@ -135,9 +128,6 @@ class AppUpdateState extends ChangeNotifier {
         await settings.setLastCheckAtMs(
           DateTime.now().millisecondsSinceEpoch,
         );
-        if (latest != null) {
-          await settings.setKnownLatestTag(latest!.tag);
-        }
         status = result.isAvailable
             ? UpdateStatus.available
             : UpdateStatus.upToDate;
@@ -145,15 +135,6 @@ class AppUpdateState extends ChangeNotifier {
     } catch (e) {
       status = UpdateStatus.failed;
       error = 'Check failed ($e).';
-    }
-    notifyListeners();
-  }
-
-  /// Hides the top-right dot for this release. The update is still shown
-  /// when the sheet opens.
-  Future<void> dismiss() async {
-    if (latest != null) {
-      await settings.setDismissedTag(latest!.tag);
     }
     notifyListeners();
   }

@@ -1,8 +1,8 @@
 /// App-update preferences, persisted in SharedPreferences.
 ///
 /// Nothing here installs anything: the auto-check only *finds* a release.
-/// Installing always starts from the user's tap in the update sheet, and
-/// Android asks them to confirm the install.
+/// Installing always starts from the user's tap in the Settings section,
+/// and Android asks them to confirm the install.
 library;
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,8 +10,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 class UpdateSettings {
   static const _autoCheckKey = 'update_auto_check';
   static const _lastCheckKey = 'update_last_check_ms';
-  static const _knownLatestKey = 'update_known_latest_tag';
-  static const _dismissedKey = 'update_dismissed_tag';
 
   final SharedPreferences _prefs;
 
@@ -30,17 +28,4 @@ class UpdateSettings {
   int get lastCheckAtMs => _prefs.getInt(_lastCheckKey) ?? 0;
 
   Future<void> setLastCheckAtMs(int ms) => _prefs.setInt(_lastCheckKey, ms);
-
-  /// Tag of the newest release seen, '' when none checked yet.
-  String get knownLatestTag => _prefs.getString(_knownLatestKey) ?? '';
-
-  Future<void> setKnownLatestTag(String tag) =>
-      _prefs.setString(_knownLatestKey, tag);
-
-  /// Tag the user tapped Later on. The top-right button stops badging
-  /// for that tag (the update is still shown when the sheet opens).
-  String get dismissedTag => _prefs.getString(_dismissedKey) ?? '';
-
-  Future<void> setDismissedTag(String tag) =>
-      _prefs.setString(_dismissedKey, tag);
 }

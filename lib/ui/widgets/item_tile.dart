@@ -37,7 +37,18 @@ class ItemTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final meta = metaLookup(itemId);
     final title = titleOverride ?? meta.name;
+    final theme = Theme.of(context);
+    // One detail-line rhythm everywhere: 13px muted, so long names wrap
+    // inside their own row instead of pushing prices around (revamp).
+    final subtitleLine = DefaultTextStyle.merge(
+      style: TextStyle(
+        fontSize: 13,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+      child: clipSubtitle ? _Clipped(child: subtitle) : subtitle,
+    );
     return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 13),
       leading: GestureDetector(
         // Icon-only tap: opens the item details page. Tapping anywhere
         // else on the row keeps the row's own onTap (expand) behavior.
@@ -46,10 +57,10 @@ class ItemTile extends StatelessWidget {
             builder: (_) => ItemDetailScreen(itemId: itemId),
           ),
         ),
-        child: ItemIcon(url: meta.iconUrl),
+        child: ItemIcon(url: meta.iconUrl, size: 46),
       ),
-      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: clipSubtitle ? _Clipped(child: subtitle) : subtitle,
+      title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: subtitleLine,
       dense: true,
       onTap: onTap,
     );

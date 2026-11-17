@@ -12,7 +12,6 @@ import '../../state/app_update_state.dart';
 import '../widgets/coins_text.dart';
 import '../widgets/notice_banner.dart';
 import '../widgets/stale_banner.dart';
-import '../widgets/update_button.dart';
 import 'held_screen.dart';
 import 'inventory_screen.dart';
 import 'orders_screen.dart';
@@ -69,11 +68,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               padding: const EdgeInsets.only(right: 4),
               child: CoinsText(
                 app.walletCoins,
-                style: Theme.of(context).textTheme.titleMedium,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
               ),
             ),
           ),
-          const UpdateButton(),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',
@@ -111,26 +113,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _tab,
-        onTap: (i) => setState(() => _tab = i),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.swap_horiz_outlined),
-            activeIcon: Icon(Icons.swap_horiz),
-            label: 'Listings',
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          border: Border(
+            top: BorderSide(color: Color(0xFFEEE3C6)),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.inbox_outlined),
-            activeIcon: Icon(Icons.inbox),
-            label: 'Deliveries',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.inventory_2_outlined),
-            activeIcon: Icon(Icons.inventory_2),
-            label: 'Holdings',
-          ),
-        ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _tab,
+          onTap: (i) => setState(() => _tab = i),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.swap_horiz_outlined),
+              activeIcon: Icon(Icons.swap_horiz),
+              label: 'Listings',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.inbox_outlined),
+              activeIcon: Icon(Icons.inbox),
+              label: 'Deliveries',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.inventory_2_outlined),
+              activeIcon: Icon(Icons.inventory_2),
+              label: 'Holdings',
+            ),
+          ],
+        ),
       ),
     );
   }

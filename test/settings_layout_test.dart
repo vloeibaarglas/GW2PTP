@@ -17,11 +17,12 @@ void main() {
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
 
-    // v3 sections.
-    expect(find.text('Account'), findsOneWidget);
-    expect(find.text('Sync'), findsOneWidget);
-    expect(find.text('Appearance'), findsOneWidget);
-    expect(find.text('Cached Data'), findsOneWidget);
+    // v3 sections (revamp: uppercase 11.5px labels).
+    expect(find.text('ACCOUNT'), findsOneWidget);
+    expect(find.text('SYNC'), findsOneWidget);
+    expect(find.text('APPEARANCE'), findsOneWidget);
+    expect(find.text('CACHED DATA'), findsOneWidget);
+    expect(find.text('APP UPDATES'), findsOneWidget);
     // Old section titles are gone.
     expect(find.text('API Key'), findsNothing);
     expect(find.text('API Permissions'), findsNothing);

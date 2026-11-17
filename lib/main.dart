@@ -43,6 +43,26 @@ Future<void> main() async {
   );
 }
 
+/// Revamp palette (sketch tokens): warm cream surfaces, brass primary.
+/// Only the light theme carries it — the dark theme stays the seed-amber
+/// one, since the sketch's dark tokens were never specified.
+final ColorScheme _revampLightScheme =
+    ColorScheme.fromSeed(seedColor: const Color(0xFF8A6D1D)).copyWith(
+  primary: const Color(0xFF8A6D1D),
+  onPrimary: const Color(0xFFFFFDF4),
+  secondary: const Color(0xFFB8860B),
+  secondaryContainer: const Color(0xFFF3E3C8),
+  onSecondaryContainer: const Color(0xFF2B2115),
+  surface: const Color(0xFFFDF8EC),
+  onSurface: const Color(0xFF2B2115),
+  surfaceContainerLowest: const Color(0xFFFFFDF4),
+  surfaceContainerLow: const Color(0xFFFDF6E9),
+  onSurfaceVariant: const Color(0xFF7D6C52),
+  outline: const Color(0xFFE3D5BA),
+  outlineVariant: const Color(0xFFCFC0A0),
+  error: const Color(0xFFB03A2E),
+);
+
 class TpConsoleApp extends StatelessWidget {
   final SharedPreferences prefs;
   final Gw2Api api;
@@ -82,8 +102,65 @@ class TpConsoleApp extends StatelessWidget {
         builder: (_, app, __) => MaterialApp(
           title: 'GW2 Personal Trading Post',
           theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.amber),
+            colorScheme: _revampLightScheme,
             useMaterial3: true,
+            scaffoldBackgroundColor: _revampLightScheme.surface,
+            cardTheme: CardThemeData(
+              color: _revampLightScheme.surfaceContainerLow,
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            appBarTheme: AppBarTheme(
+              backgroundColor: _revampLightScheme.surface,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              titleTextStyle: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.bold,
+                color: _revampLightScheme.onSurface,
+              ),
+              iconTheme: IconThemeData(
+                size: 22,
+                color: _revampLightScheme.onSurface,
+              ),
+            ),
+            tabBarTheme: TabBarThemeData(
+              labelStyle: const TextStyle(
+                fontSize: 15.5,
+                fontWeight: FontWeight.w600,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontSize: 15.5,
+                fontWeight: FontWeight.w600,
+              ),
+              labelColor: _revampLightScheme.primary,
+              unselectedLabelColor: _revampLightScheme.onSurfaceVariant,
+              indicator: UnderlineTabIndicator(
+                borderSide: BorderSide(
+                  width: 3,
+                  color: _revampLightScheme.primary,
+                ),
+              ),
+              indicatorSize: TabBarIndicatorSize.label,
+            ),
+            bottomNavigationBarTheme: BottomNavigationBarThemeData(
+              backgroundColor: _revampLightScheme.surfaceContainerLowest,
+              selectedItemColor: _revampLightScheme.primary,
+              unselectedItemColor: _revampLightScheme.onSurfaceVariant,
+              selectedLabelStyle: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+              selectedIconTheme: const IconThemeData(size: 22),
+              unselectedIconTheme: const IconThemeData(size: 22),
+              elevation: 0,
+            ),
           ),
           darkTheme: ThemeData(
             colorScheme: ColorScheme.fromSeed(

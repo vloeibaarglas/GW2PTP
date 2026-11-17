@@ -10,12 +10,12 @@ import 'package:provider/provider.dart';
 import '../../api/permissions.dart';
 import '../../build_tag.dart';
 import '../../state/app_state.dart';
+import '../../state/app_update_state.dart';
 import '../../store/sync_settings.dart';
 import '../../util/clock_time.dart';
 import '../../util/day_label.dart';
 import '../../util/numbers.dart';
 import '../../util/time_ago.dart';
-import '../widgets/update_button.dart';
 
 class SettingsScreen extends StatefulWidget {
   /// When true the screen is the first-run gate: no back navigation until
@@ -119,6 +119,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final updates = context.watch<AppUpdateState>();
     final permissionTotal = requiredApiPermissions.length;
     final permissionGranted = state.hasKey
         ? permissionTotal - state.missingPermissions.length
@@ -141,11 +142,22 @@ class _SettingsScreenState extends State<SettingsScreen>
       appBar: AppBar(
         title: const Text('Settings'),
         automaticallyImplyLeading: !widget.firstRun,
-        actions: const [UpdateButton()],
       ),
       body: SafeArea(
         top: false,
-        child: ListView(
+        child: CardTheme(
+          // Revamp: Settings cards are flat, not raised — palest surface
+          // with a hairline border. Scoped here so the row cards on the
+          // tabs keep the global raised card theme.
+          data: CardThemeData(
+            color: Theme.of(context).colorScheme.surfaceContainerLowest,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: Theme.of(context).colorScheme.outline),
+            ),
+          ),
+          child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
             if (widget.firstRun)
@@ -443,6 +455,47 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
             ),
+            _sectionTitle(
+              context,
+              'App Updates',
+              updates.currentVersion != null
+                  ? 'Version ${updates.currentVersion}'
+                  : null,
+            ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _updateStatusBody(updates),
+                    const Divider(height: 24),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Auto-check for updates'),
+                      subtitle: Text(
+                        updates.autoCheck
+                            ? 'Checks every 3 days when you open the app.'
+                            : 'Only checks when you tap Check for updates.',
+                      ),
+                      value: updates.autoCheck,
+                      onChanged: (on) => updates.setAutoCheck(on),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _lastCheckedLabel(updates),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Updates never install on their own — installing starts '
+                      'from your tap, and Android asks you to confirm.',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 24),
             const Center(
               child: Text(
@@ -453,18 +506,180 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: 8),
           ],
         ),
+        ),
       ),
     );
+  }
+
+  String _lastCheckedLabel(AppUpdateState updates) {
+    final ms = updates.lastCheckAtMs;
+    if (ms <= 0) return 'Never checked';
+    return 'Last checked ${timeAgo(
+      DateTime.fromMillisecondsSinceEpoch(ms),
+    )}';
+  }
+
+  /// The App Updates status area: what the last check found, and the
+  /// action for it. Checking and installing are the only states with no
+  /// button — everything else offers one.
+  Widget _updateStatusBody(AppUpdateState updates) {
+    switch (updates.status) {
+      case UpdateStatus.checking:
+        return const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            LinearProgressIndicator(),
+            SizedBox(height: 8),
+            Text('Checking GitHub…', style: TextStyle(fontSize: 12)),
+          ],
+        );
+      case UpdateStatus.downloading:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            LinearProgressIndicator(value: updates.downloadProgress),
+            const SizedBox(height: 8),
+            Text(
+              updates.downloadProgress != null
+                  ? 'Downloading… ${(updates.downloadProgress! * 100).round()}%'
+                  : 'Downloading…',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ],
+        );
+      case UpdateStatus.available:
+        final release = updates.latest!;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.system_update_outlined, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Version ${release.version} is available',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            if (release.notes.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ExpansionTile(
+                title: const Text(
+                  "What's new",
+                  style: TextStyle(fontSize: 12),
+                ),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: EdgeInsets.zero,
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      release.notes.trim(),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () => updates.install(),
+              child: const Text('Install update'),
+            ),
+          ],
+        );
+      case UpdateStatus.upToDate:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.check_circle_outline, size: 16),
+                SizedBox(width: 6),
+                Text("You're up to date.", style: TextStyle(fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () => updates.check(),
+              child: const Text('Check for updates'),
+            ),
+          ],
+        );
+      case UpdateStatus.handedToInstaller:
+        return const Row(
+          children: [
+            Icon(Icons.check_circle_outline, size: 16),
+            SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'Download complete — Android will ask you to confirm '
+                'the install.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
+        );
+      case UpdateStatus.failed:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.warning_amber_outlined, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    updates.error ?? 'Check failed.',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () => updates.check(),
+              child: const Text('Try again'),
+            ),
+          ],
+        );
+      case UpdateStatus.idle:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Check GitHub for a newer release.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () => updates.check(),
+              child: const Text('Check for updates'),
+            ),
+          ],
+        );
+    }
   }
 
   Widget _sectionTitle(BuildContext context, String title,
       [String? subtitle]) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 7),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.08 * 11.5,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
           if (subtitle != null)
             Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
         ],

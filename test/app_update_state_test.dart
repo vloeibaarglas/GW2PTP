@@ -27,18 +27,12 @@ void main() {
 
       expect(settings.autoCheck, isFalse);
       expect(settings.lastCheckAtMs, 0);
-      expect(settings.knownLatestTag, '');
-      expect(settings.dismissedTag, '');
 
       await settings.setAutoCheck(true);
       await settings.setLastCheckAtMs(12345);
-      await settings.setKnownLatestTag('v0.1.1');
-      await settings.setDismissedTag('v0.1.1');
 
       expect(settings.autoCheck, isTrue);
       expect(settings.lastCheckAtMs, 12345);
-      expect(settings.knownLatestTag, 'v0.1.1');
-      expect(settings.dismissedTag, 'v0.1.1');
     });
   });
 
@@ -65,12 +59,10 @@ void main() {
 
       expect(state.status, UpdateStatus.available);
       expect(state.latest!.tag, 'v0.1.1');
-      expect(state.updateAvailable, isTrue);
       expect(state.lastCheckAtMs, greaterThan(0));
-      expect(state.settings.knownLatestTag, 'v0.1.1');
     });
 
-    test('check with the same version is up to date, no badge', () async {
+    test('check with the same version is up to date', () async {
       final client = MockClient((_) async => http.Response(
           jsonEncode(releaseJson(tag: 'v0.1.0')), 200));
       final state = stateWith(client);
@@ -78,7 +70,6 @@ void main() {
       await state.check();
 
       expect(state.status, UpdateStatus.upToDate);
-      expect(state.updateAvailable, isFalse);
     });
 
     test('failed check keeps the old clock', () async {
@@ -137,19 +128,6 @@ void main() {
       await state.maybeAutoCheck();
 
       expect(state.status, UpdateStatus.available);
-    });
-
-    test('dismiss hides the badge but keeps the release', () async {
-      final client = MockClient((_) async =>
-          http.Response(jsonEncode(releaseJson()), 200));
-      final state = stateWith(client);
-      await state.check();
-      expect(state.updateAvailable, isTrue);
-
-      await state.dismiss();
-
-      expect(state.updateAvailable, isFalse);
-      expect(state.latest!.tag, 'v0.1.1');
     });
 
     test('install downloads, verifies SHA-256, hands to installer',

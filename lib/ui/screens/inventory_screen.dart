@@ -102,20 +102,47 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
           child: TextField(
             controller: _search,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Search Items…',
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
+              hintStyle: TextStyle(
+                fontSize: 15,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              prefixIcon: const Icon(Icons.search),
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surfaceContainerLowest,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 11,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
               isDense: true,
             ),
             onChanged: (_) => setState(() {}),
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
           child: InventoryFilters(
             types: _availableTypes(app, inventory),
             rarities: _availableRarities(app, inventory),
@@ -256,10 +283,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
       child: CustomScrollView(
         slivers: [
           for (final location in locations)
-            // Horizontal 16 to mirror the ListView padding on the
+            // Horizontal 14 to mirror the ListView padding on the
             // Listings/Deliveries tabs; vertical rhythm lives on the cards.
             SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               sliver: _AreaSection(
                 location: location,
                 entries: groups[location]!,
@@ -274,7 +301,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 }),
               ),
             ),
-          // Matches the other tabs: last row's 4px card margin + 16 = 20px
+          // Matches the other tabs: last row's 10px card margin + 16 = 26px
           // of breathing room at the list end.
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
         ],
@@ -315,7 +342,10 @@ class _AreaSection extends StatelessWidget {
             child: InkWell(
               onTap: onToggle,
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 15,
+                ),
                 child: Row(
                   children: [
                     Expanded(
@@ -324,11 +354,17 @@ class _AreaSection extends StatelessWidget {
                         children: [
                           Text(
                             '$location (${entries.length})',
-                            style: theme.textTheme.titleSmall,
+                            style: const TextStyle(
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           Text(
                             '$total Items',
-                            style: theme.textTheme.bodySmall,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ),
@@ -351,7 +387,7 @@ class _AreaSection extends StatelessWidget {
               final meta = metaLookup(e.itemId);
               final tag = inventoryEntryTag(e, meta);
               return Card(
-                margin: const EdgeInsets.only(bottom: 4),
+                margin: const EdgeInsets.only(bottom: 10),
                 child: ItemTile(
                   itemId: e.itemId,
                   metaLookup: metaLookup,

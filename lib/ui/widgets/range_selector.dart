@@ -15,7 +15,7 @@ import 'day_dial.dart';
 /// Bought tab's mode toggle): 14sp labels, tightened padding, dense —
 /// ~20% fatter than the first compact pass, still slimmer than default.
 final ButtonStyle compactSegmentedStyle = SegmentedButton.styleFrom(
-  textStyle: const TextStyle(fontSize: 14),
+  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
   padding: const EdgeInsets.symmetric(horizontal: 10),
   visualDensity: VisualDensity.compact,
 );

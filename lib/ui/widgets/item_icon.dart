@@ -30,7 +30,7 @@ class ItemIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     if (url.isEmpty) return _FallbackIcon(size: size);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(9),
       child: CachedNetworkImage(
         imageUrl: url,
         cacheManager: _iconCacheManager,
@@ -64,7 +64,7 @@ class _FallbackIcon extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(9),
       ),
       child: Icon(Icons.inventory_2_outlined, size: size * 0.55),
     );
@@ -85,7 +85,7 @@ class _IconPlaceholder extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(9),
       ),
     );
   }

@@ -93,7 +93,7 @@ class _BoughtTabState extends State<_BoughtTab> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -109,7 +109,7 @@ class _BoughtTabState extends State<_BoughtTab> {
                     onSelectionChanged: (s) => state.setBoughtMode(s.first),
                     showSelectedIcon: false,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   historyControls(
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -122,7 +122,7 @@ class _BoughtTabState extends State<_BoughtTab> {
                           sort: state.boughtSort,
                           onSortChanged: state.setBoughtSort,
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
                       ],
                     ),
                   ),
@@ -136,7 +136,7 @@ class _BoughtTabState extends State<_BoughtTab> {
                           labels: const ['Bought Value'],
                           copperValues: [boughtTotal],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
                       ],
                     ),
                   ),
@@ -147,7 +147,7 @@ class _BoughtTabState extends State<_BoughtTab> {
           if (pickupMode)
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -158,7 +158,7 @@ class _BoughtTabState extends State<_BoughtTab> {
                       const EmptyState('No items waiting for pickup.'),
                     for (final item in items)
                       Card(
-                        margin: const EdgeInsets.only(bottom: 4),
+                        margin: const EdgeInsets.only(bottom: 10),
                         child: ItemTile(
                           itemId: item.itemId,
                           metaLookup: state.meta.lookup,
@@ -396,7 +396,7 @@ List<Widget> _historySlivers({
     final key = expandedRowKey == null ? null : _historyRowKey(row);
     final expanded = key != null && key == expandedRowKey;
     return Card(
-      margin: const EdgeInsets.only(bottom: 4),
+      margin: const EdgeInsets.only(bottom: 10),
       child: ItemTile(
         itemId: row.itemId,
         metaLookup: metaLookup,
@@ -410,14 +410,14 @@ List<Widget> _historySlivers({
   if (isEmpty) {
     return [
       SliverPadding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
         sliver: SliverToBoxAdapter(child: EmptyState(emptyText)),
       ),
     ];
   }
   return [
     SliverPadding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, capped ? 0 : 16),
+      padding: EdgeInsets.fromLTRB(14, 0, 14, capped ? 0 : 16),
       sliver: SliverList.builder(
         itemCount: rows.length,
         itemBuilder: (context, i) => rowCard(rows[i]),
@@ -426,7 +426,7 @@ List<Widget> _historySlivers({
     if (capped)
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
           child: Center(
             child:
                 Text('Showing ${_capCountLabel()} Most Recent Transactions'),
@@ -455,7 +455,6 @@ class _SoldTabState extends State<_SoldTab> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final history = state.soldHistory;
-    final theme = Theme.of(context);
 
     final gross =
         _view.totalFor(history, state.soldGrouping, state.soldSort);
@@ -466,7 +465,7 @@ class _SoldTabState extends State<_SoldTab> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -478,7 +477,7 @@ class _SoldTabState extends State<_SoldTab> {
                     sort: state.soldSort,
                     onSortChanged: state.setSoldSort,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   if (state.soldHistoryTruncated)
                     _capWarningTile(state.soldHistoryCoveredSince),
                   ValueTile(
@@ -488,19 +487,30 @@ class _SoldTabState extends State<_SoldTab> {
                   Card(
                     child: ListTile(
                       dense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       leading: Image.asset(
                         'assets/images/coin_gold.png',
-                        width: 40,
-                        height: 40,
+                        width: 46,
+                        height: 46,
                       ),
-                      title: const Text('Coins Waiting For Pickup'),
+                      title: const Text(
+                        'Coins Waiting For Pickup',
+                        style: TextStyle(fontSize: 15),
+                      ),
                       subtitle: CoinsText(
                         state.delivery.coins,
-                        style: theme.textTheme.titleMedium,
+                        style: const TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                 ],
               ),
             ),

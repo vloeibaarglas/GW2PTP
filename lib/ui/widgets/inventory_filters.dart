@@ -57,14 +57,18 @@ class InventoryFilters extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final caption = theme.textTheme.labelSmall;
+    final caption = const TextStyle(
+      fontSize: 13.5,
+      fontWeight: FontWeight.bold,
+    );
     // Thin outline box so the dropdowns read as tappable selectors,
     // matching the search field's outlined look.
     Widget selectorBox(Widget child) => Container(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            border: Border.all(color: theme.colorScheme.outline),
-            borderRadius: BorderRadius.circular(4),
+            color: theme.colorScheme.surfaceContainerLowest,
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(10),
           ),
           child: child,
         );
@@ -79,7 +83,7 @@ class InventoryFilters extends StatelessWidget {
                 DropdownButton<String?>(
                   value: typeFilter,
                   isExpanded: true,
-                  style: theme.textTheme.bodySmall,
+                  style: const TextStyle(fontSize: 14.5),
                   underline: const SizedBox.shrink(),
                   items: [
                     const DropdownMenuItem<String?>(
@@ -94,13 +98,13 @@ class InventoryFilters extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: selectorBox(
                 DropdownButton<String?>(
                   value: rarityFilter,
                   isExpanded: true,
-                  style: theme.textTheme.bodySmall,
+                  style: const TextStyle(fontSize: 14.5),
                   underline: const SizedBox.shrink(),
                   items: [
                     const DropdownMenuItem<String?>(
@@ -126,6 +130,7 @@ class InventoryFilters extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Sellable', style: caption),
+                  const SizedBox(height: 5),
                   CompactGroupBy<bool?>(
                     values: const [null, true, false],
                     labelOf: _triLabel,
@@ -135,13 +140,14 @@ class InventoryFilters extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Bound', style: caption),
+                  const SizedBox(height: 5),
                   CompactGroupBy<bool?>(
                     values: const [null, true, false],
                     labelOf: _triLabel,

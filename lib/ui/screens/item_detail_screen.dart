@@ -21,7 +21,6 @@ import '../../util/coins.dart';
 import '../../util/craft_pricing.dart';
 import '../widgets/coins_text.dart';
 import '../widgets/item_icon.dart';
-import '../widgets/update_button.dart';
 
 /// History range chips; all ranges re-filter the cached points locally.
 enum _Range { d7, d30, y1, max }
@@ -199,7 +198,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       appBar: AppBar(
         title: const Text('Item details'),
         actions: [
-          const UpdateButton(),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',

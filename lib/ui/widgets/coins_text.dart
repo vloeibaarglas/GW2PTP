@@ -10,10 +10,11 @@ import 'package:flutter/material.dart';
 
 import '../../util/coins.dart';
 
-/// GW2 coin palette, deepened for text legibility.
+/// GW2 coin palette, deepened for text legibility. Matches the revamp
+/// sketch tokens.
 const Color coinGold = Color(0xFFB8860B);
-const Color coinSilver = Color(0xFF7A8590);
-const Color coinCopper = Color(0xFFB5651D);
+const Color coinSilver = Color(0xFF8496A5);
+const Color coinCopper = Color(0xFFBD7622);
 
 Color _unitColor(String unit) {
   switch (unit) {
