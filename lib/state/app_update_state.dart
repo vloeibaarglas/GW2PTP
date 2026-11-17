@@ -10,6 +10,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -180,6 +181,18 @@ class AppUpdateState extends ChangeNotifier {
     downloadProgress = 0;
     error = null;
     notifyListeners();
+    // The APK must land in the platform cache dir: the FileProvider
+    // serves exactly that dir, and a path outside its root makes the
+    // install handoff fail (seen on device as "Could not open the
+    // Android installer"). Directory.systemTemp is only the fallback —
+    // it is not guaranteed to be under the provider's root.
+    var downloadDir = Directory.systemTemp.path;
+    try {
+      downloadDir = await AppInstall.cacheDir ?? downloadDir;
+    } catch (_) {
+      // Channel unavailable (tests without the mock, old builds):
+      // keep the fallback and let the handoff report the real result.
+    }
     try {
       final expectedSha = release.sha256Url != null
           ? await UpdateChecker.fetchExpectedSha256(
@@ -193,7 +206,7 @@ class AppUpdateState extends ChangeNotifier {
         throw 'Download failed (HTTP ${response.statusCode}).';
       }
       final total = response.contentLength ?? -1;
-      final file = File('${Directory.systemTemp.path}/gw2-ptp-update.apk');
+      final file = File('$downloadDir/gw2-ptp-update.apk');
       final sink = file.openWrite();
       var received = 0;
       await for (final chunk in response.stream) {
@@ -228,7 +241,11 @@ class AppUpdateState extends ChangeNotifier {
       return true;
     } catch (e) {
       status = UpdateStatus.failed;
-      error = e.toString();
+      // The native handoff now throws a PlatformException carrying the
+      // real reason (e.g. the APK path is outside the FileProvider
+      // root); show that message, not the "PlatformException(...)"
+      // wrapper.
+      error = e is PlatformException ? (e.message ?? e.toString()) : e.toString();
       downloadProgress = null;
       notifyListeners();
       return false;

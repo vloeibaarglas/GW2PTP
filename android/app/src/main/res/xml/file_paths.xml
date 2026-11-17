@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- FileProvider paths for the app-update APK download.
-     The APK lands in the cache dir (Directory.systemTemp) and is handed to
-     the system installer via a content URI. Nothing else is shared. -->
+     The APK lands in the platform cache dir (AppInstall.cacheDir —
+     context.cacheDir, the same dir this provider serves). Nothing else
+     is shared. -->
 <paths>
     <cache-path name="cache" path="." />
 </paths>

@@ -23,6 +23,12 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, installChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "cacheDir" -> {
+                        // The FileProvider serves exactly this dir; the
+                        // downloaded APK must land here. Directory.systemTemp
+                        // is not guaranteed to be under it.
+                        result.success(cacheDir.absolutePath)
+                    }
                     "canInstall" -> {
                         // Android 8+: whether this app may start an install
                         // without a detour to system settings first.
@@ -59,7 +65,13 @@ class MainActivity : FlutterActivity() {
                             // nothing installs silently from here.
                             result.success(true)
                         } catch (e: Exception) {
-                            result.success(false)
+                            // Don't swallow the reason: the Dart side shows
+                            // it, so a failure on a real device says *why*
+                            // (e.g. the APK path is outside the
+                            // FileProvider's cache-path, or no installer
+                            // activity exists) instead of a generic
+                            // "could not open" message.
+                            result.error("INSTALL_FAILED", e.toString(), null)
                         }
                     }
                     "openInstallSettings" -> {

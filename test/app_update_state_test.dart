@@ -286,5 +286,103 @@ void main() {
       expect(state.status, UpdateStatus.failed);
       expect(state.error, contains('Could not open the Android installer'));
     });
+
+    test('install downloads into the platform cache dir', () async {
+      // The FileProvider serves exactly context.cacheDir; a download
+      // elsewhere (e.g. Directory.systemTemp, when it is not under the
+      // cache dir) makes the install handoff fail with "Could not open
+      // the Android installer".
+      final cacheDir = await Directory.systemTemp.createTemp();
+      addTearDown(() => cacheDir.delete(recursive: true));
+      final apkBytes = utf8.encode('fake-apk-bytes');
+      final sha = sha256.convert(apkBytes).toString();
+      final client = MockClient((request) async {
+        final url = request.url.toString();
+        if (url.contains('api.github.com')) {
+          return http.Response(jsonEncode(releaseJson()), 200);
+        }
+        if (url.endsWith('.sha256')) {
+          return http.Response('$sha  gw2-ptp-deadbeef.apk\n', 200);
+        }
+        return http.Response.bytes(apkBytes, 200);
+      });
+      String? installedPath;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('com.vloeibaarglas.gw2tp/install'),
+        (call) async {
+          if (call.method == 'cacheDir') return cacheDir.path;
+          if (call.method == 'canInstall') return true;
+          if (call.method == 'installApk') {
+            installedPath = (call.arguments as Map)['path'] as String;
+            return true;
+          }
+          return null;
+        },
+      );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+          const MethodChannel('com.vloeibaarglas.gw2tp/install'),
+          null,
+        );
+      });
+      final state = stateWith(client);
+      await state.check();
+
+      final ok = await state.install();
+
+      expect(ok, isTrue);
+      expect(installedPath, '${cacheDir.path}/gw2-ptp-update.apk');
+      final downloaded = File(installedPath!);
+      expect(await downloaded.exists(), isTrue);
+      await downloaded.delete();
+    });
+
+    test('install surfaces the native failure reason', () async {
+      final apkBytes = utf8.encode('fake-apk-bytes');
+      final sha = sha256.convert(apkBytes).toString();
+      final client = MockClient((request) async {
+        final url = request.url.toString();
+        if (url.contains('api.github.com')) {
+          return http.Response(jsonEncode(releaseJson()), 200);
+        }
+        if (url.endsWith('.sha256')) {
+          return http.Response('$sha  gw2-ptp-deadbeef.apk\n', 200);
+        }
+        return http.Response.bytes(apkBytes, 200);
+      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('com.vloeibaarglas.gw2tp/install'),
+        (call) async {
+          if (call.method == 'canInstall') return true;
+          if (call.method == 'installApk') {
+            throw PlatformException(
+              code: 'INSTALL_FAILED',
+              message: 'IllegalArgumentException: Failed to find '
+                  'configured root that contains /tmp/gw2-ptp-update.apk',
+            );
+          }
+          return null;
+        },
+      );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+          const MethodChannel('com.vloeibaarglas.gw2tp/install'),
+          null,
+        );
+      });
+      final state = stateWith(client);
+      await state.check();
+
+      final ok = await state.install();
+
+      expect(ok, isFalse);
+      expect(state.status, UpdateStatus.failed);
+      expect(state.error, contains('Failed to find configured root'));
+      expect(state.error, isNot(contains('Could not open')));
+    });
   });
 }
