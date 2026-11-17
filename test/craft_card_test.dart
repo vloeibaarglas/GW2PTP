@@ -71,5 +71,50 @@ void main() {
       await pumpRow(tester, label: '×1 Large Claw', buy: 57, sell: 66);
       expect(find.text('Vendor'), findsNothing);
     });
+
+    testWidgets('vendor chip does not push the pricing line down',
+        (tester) async {
+      // One vendor row and one plain row side by side: the pricing line
+      // must sit the same distance below the row top in both, and the
+      // rows must be the same height. (A Chip is at least 32px tall —
+      // 30px with compact density — which made the name line on vendor
+      // rows taller than the 20px text line and pushed Buy/Sell down.)
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 390,
+              child: Column(
+                children: [
+                  CraftIngredientRow(
+                    label: '×1 Jug of Water',
+                    buyLine: 8,
+                    sellLine: 8,
+                    vendorUsed: true,
+                  ),
+                  CraftIngredientRow(
+                    label: '×1 Large Claw',
+                    buyLine: 57,
+                    sellLine: 66,
+                    vendorUsed: false,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final rows = find.byType(CraftIngredientRow);
+      expect(tester.getSize(rows.first).height,
+          tester.getSize(rows.last).height);
+      final firstBuyDy = tester.getTopLeft(find.text('Buy ').first).dy;
+      final firstTop = tester.getTopLeft(rows.first).dy;
+      final lastBuyDy = tester.getTopLeft(find.text('Buy ').last).dy;
+      final lastTop = tester.getTopLeft(rows.last).dy;
+      expect(firstBuyDy - firstTop, lastBuyDy - lastTop);
+      expect(tester.takeException(), isNull);
+    });
   });
 }

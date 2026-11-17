@@ -1319,18 +1319,34 @@ class CraftIngredientRow extends StatelessWidget {
 
 /// Compact marker for an ingredient priced from a vendor. It trails the
 /// ingredient name, so it never widens the price line.
+/// A plain pill, not a [Chip]: even with a shrink-wrapped tap target a
+/// Chip is at least 32px tall (its `_kChipHeight` floor, 30px with compact
+/// density), which made the name line on vendor rows 30px against a 20px
+/// text line and pushed the Buy/Sell line down 10px versus plain rows.
+/// This pill is ~18px tall, so it fits inside the text line and the
+/// pricing line stays put.
 class _VendorTag extends StatelessWidget {
   const _VendorTag();
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 6),
-      child: Chip(
-        label: Text('Vendor', style: TextStyle(fontSize: 11)),
-        visualDensity: VisualDensity.compact,
-        padding: EdgeInsets.zero,
-        labelPadding: EdgeInsets.symmetric(horizontal: 6),
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(
+          color: scheme.secondaryContainer,
+          border: Border.all(color: scheme.outline),
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Text(
+          'Vendor',
+          style: TextStyle(
+            fontSize: 11,
+            color: scheme.onSecondaryContainer,
+          ),
+        ),
       ),
     );
   }
