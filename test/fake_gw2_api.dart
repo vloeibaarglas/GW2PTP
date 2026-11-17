@@ -125,8 +125,16 @@ class FakeGw2Api implements Gw2Api {
     return inventory;
   }
 
+  /// Canned item metadata, keyed by id. Only listed ids resolve;
+  /// anything else stays unknown, as on the live API for an id the
+  /// caller never warmed.
+  Map<int, ItemMeta> metaById = {};
+
   @override
-  Future<Map<int, ItemMeta>> fetchItemMeta(List<int> ids) async => {};
+  Future<Map<int, ItemMeta>> fetchItemMeta(List<int> ids) async => {
+        for (final id in ids)
+          if (metaById.containsKey(id)) id: metaById[id]!,
+      };
 
   // --- Item details surface (fetch-on-open) ---
 

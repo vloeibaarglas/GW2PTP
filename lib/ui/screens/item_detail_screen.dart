@@ -175,6 +175,16 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         [for (final i in recipe.ingredients) i.itemId],
         app.api,
       );
+      // Ingredient names come from the meta cache, which sync only warms
+      // for owned/traded ids. A vendor-bought ingredient like Jug of
+      // Water (12156) was never seen, so its row fell back to
+      // 'Item 12156'. Warm the names with the prices; the setState below
+      // then paints real names. Warm swallows its own failures, so a
+      // bad metadata fetch still leaves the prices usable.
+      await app.meta.warm(
+        {for (final i in recipe.ingredients) i.itemId},
+        app.api.fetchItemMeta,
+      );
       _set(() {
         _ingredientPrices = prices;
         _craftLoading = false;
