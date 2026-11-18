@@ -26,7 +26,7 @@ CommerceQuote quote({required int buy, required int sell}) => CommerceQuote(
 
 void main() {
   group('CraftPricing', () {
-    test('buy and sell columns from TP quotes, column-consistent margins', () {
+    test('buy and sell columns from TP quotes, four scenarios', () {
       final pricing = CraftPricing.compute(
         recipe: recipe(
           ingredients: const [
@@ -47,11 +47,26 @@ void main() {
       expect(pricing.costSell, 2 * 15 + 3 * 30); // 120
       expect(pricing.netBuy, (120 * 0.85).round()); // 102
       expect(pricing.netSell, (200 * 0.85).round()); // 170
-      // Column-consistent: Buy exit with Buy entry, Sell exit with Sell entry.
-      expect(pricing.marginBuy, 102 - 80); // 22, NOT 170 - 80 (best case)
-      expect(pricing.marginSell, 170 - 120); // 50, NOT 102 - 120 (worst case)
-      expect(pricing.roiBuy, closeTo(22 / 80, 1e-9));
-      expect(pricing.roiSell, closeTo(50 / 120, 1e-9));
+      // Every entry x exit pair is priced: the patient path (bid
+      // entry, ask exit) is the best one, not the column pairing.
+      CraftScenario s(CraftBasis e, CraftBasis x) =>
+          pricing.scenario(e, x);
+      expect(s(CraftBasis.bid, CraftBasis.bid).margin, 102 - 80); // 22
+      expect(s(CraftBasis.bid, CraftBasis.bid).roi, closeTo(22 / 80, 1e-9));
+      expect(s(CraftBasis.bid, CraftBasis.ask).margin, 170 - 80); // 90
+      expect(s(CraftBasis.bid, CraftBasis.ask).roi, closeTo(90 / 80, 1e-9));
+      expect(s(CraftBasis.ask, CraftBasis.bid).margin, 102 - 120); // -18
+      expect(
+          s(CraftBasis.ask, CraftBasis.bid).roi, closeTo(-18 / 120, 1e-9));
+      expect(s(CraftBasis.ask, CraftBasis.ask).margin, 170 - 120); // 50
+      expect(s(CraftBasis.ask, CraftBasis.ask).roi, closeTo(50 / 120, 1e-9));
+      expect(s(CraftBasis.bid, CraftBasis.ask).isUsual, isTrue);
+      expect(s(CraftBasis.bid, CraftBasis.bid).isUsual, isFalse);
+      final best = pricing.best;
+      expect(best, isNotNull);
+      expect(best!.entry, CraftBasis.bid);
+      expect(best.exit, CraftBasis.ask);
+      expect(best.margin, 90);
       expect(pricing.itemBuy, 120);
       expect(pricing.itemSell, 200);
       expect(pricing.lines.every((l) => !l.vendorUsed), isTrue);
@@ -119,9 +134,20 @@ void main() {
       expect(pricing.costSell, 80);
       expect(pricing.netBuy, isNull);
       expect(pricing.netSell, (150 * 0.85).round());
-      expect(pricing.marginBuy, isNull);
-      expect(pricing.marginSell, (150 * 0.85).round() - 80);
-      expect(pricing.roiBuy, isNull);
+      // Only the ask-entry / ask-exit cell is priced.
+      CraftScenario s(CraftBasis e, CraftBasis x) =>
+          pricing.scenario(e, x);
+      expect(s(CraftBasis.bid, CraftBasis.bid).margin, isNull);
+      expect(s(CraftBasis.bid, CraftBasis.ask).margin, isNull);
+      expect(s(CraftBasis.ask, CraftBasis.bid).margin, isNull);
+      expect(s(CraftBasis.ask, CraftBasis.ask).margin,
+          (150 * 0.85).round() - 80);
+      expect(s(CraftBasis.ask, CraftBasis.ask).roi,
+          closeTo(((150 * 0.85).round() - 80) / 80, 1e-9));
+      final best = pricing.best;
+      expect(best, isNotNull);
+      expect(best!.entry, CraftBasis.ask);
+      expect(best.exit, CraftBasis.ask);
       expect(pricing.itemBuy, isNull);
       expect(pricing.itemSell, 150);
     });
@@ -140,10 +166,9 @@ void main() {
       expect(pricing.lines.single.sellLine, isNull);
       expect(pricing.costBuy, isNull);
       expect(pricing.costSell, isNull);
-      expect(pricing.marginBuy, isNull);
-      expect(pricing.marginSell, isNull);
-      expect(pricing.roiBuy, isNull);
-      expect(pricing.roiSell, isNull);
+      expect(pricing.scenarios.every((s) => s.margin == null), isTrue);
+      expect(pricing.scenarios.every((s) => s.roi == null), isTrue);
+      expect(pricing.best, isNull);
     });
 
     test('zero-cost recipe shows an em dash ROI (no divide by zero)', () {
@@ -156,9 +181,13 @@ void main() {
 
       expect(pricing.costBuy, 0);
       expect(pricing.costSell, 0);
-      expect(pricing.marginBuy, (100 * 0.85).round());
-      expect(pricing.roiBuy, isNull);
-      expect(pricing.roiSell, isNull);
+      // Margins are priced (free ingredients), ROIs are null.
+      expect(
+        pricing.scenario(CraftBasis.bid, CraftBasis.bid).margin,
+        (100 * 0.85).round(),
+      );
+      expect(pricing.scenarios.every((s) => s.roi == null), isTrue);
+      expect(pricing.best, isNotNull);
     });
 
     test('vendor tie counts as vendor-used', () {

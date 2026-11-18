@@ -19,6 +19,7 @@ import '../../store/item_detail_cache.dart';
 import '../../state/app_state.dart';
 import '../../util/coins.dart';
 import '../../util/craft_pricing.dart';
+import '../../util/time_ago.dart';
 import '../widgets/coins_text.dart';
 import '../widgets/item_icon.dart';
 
@@ -87,7 +88,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
   bool _craftLoading = false;
   Object? _craftError;
-  Map<int, CommerceQuote>? _ingredientPrices;
+
+  /// Priced craft for the first recipe, shared by the Best craft strip
+  /// and the Craft card so both read the same numbers.
+  CraftPricing? _craftPricing;
 
   _Range _range = _Range.d30;
   bool _disposed = false;
@@ -115,7 +119,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       _bookError = null;
       _historyError = null;
       _craftError = null;
-      _ingredientPrices = null;
+      _craftPricing = null;
     });
     final app = context.read<AppState>();
     try {
@@ -186,7 +190,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         app.api.fetchItemMeta,
       );
       _set(() {
-        _ingredientPrices = prices;
+        _craftPricing = CraftPricing.compute(
+          recipe: recipe,
+          quote: _bundle?.quote,
+          ingredientPrices: prices,
+        );
         _craftLoading = false;
       });
     } catch (e) {
@@ -235,9 +243,27 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       child: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          _HeaderCard(detail: bundle.detail),
+          // Decision numbers first: header, best craft, position.
+          _HeaderCard(detail: bundle.detail, quote: bundle.quote),
           const SizedBox(height: 12),
-          _DescriptionCard(detail: bundle.detail),
+          if (_craftPricing != null)
+            _BestCraftStrip(
+              pricing: _craftPricing!,
+              quote: bundle.quote,
+              itemId: widget.itemId,
+            ),
+          if (_craftPricing != null) const SizedBox(height: 12),
+          _PositionCard(itemId: widget.itemId, book: bundle.book),
+          const SizedBox(height: 12),
+          _CraftCard(
+            recipes: bundle.recipes,
+            pricing: _craftPricing,
+            loading: _craftLoading,
+            error: _craftError,
+            onRetry: bundle.recipes.isNotEmpty
+                ? () => _loadCraftPrices(bundle.recipes.first)
+                : null,
+          ),
           const SizedBox(height: 12),
           _MarketCard(quote: bundle.quote),
           const SizedBox(height: 12),
@@ -246,6 +272,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             loading: _bookLoading,
             error: _bookError,
             onRetry: _loadBook,
+            itemId: widget.itemId,
           ),
           const SizedBox(height: 12),
           _HistoryCard(
@@ -257,18 +284,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             onRetry: _loadHistory,
           ),
           const SizedBox(height: 12),
-          _CraftCard(
-            recipes: bundle.recipes,
-            quote: bundle.quote,
-            ingredientPrices: _ingredientPrices,
-            loading: _craftLoading,
-            error: _craftError,
-            onRetry: bundle.recipes.isNotEmpty
-                ? () => _loadCraftPrices(bundle.recipes.first)
-                : null,
-          ),
-          const SizedBox(height: 12),
-          _PositionCard(itemId: widget.itemId),
+          // Reference material last: nothing above the fold depends on it.
+          _DescriptionCard(detail: bundle.detail),
           const SizedBox(height: 16),
         ],
       ),
@@ -377,10 +394,191 @@ class _KvRow extends StatelessWidget {
   }
 }
 
+/// Small outlined price chip ("Bid 1s 23c"), tinted by side.
+class _PriceChip extends StatelessWidget {
+  final String label;
+  final int price;
+  final Color color;
+
+  const _PriceChip({
+    required this.label,
+    required this.price,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$label ',
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+          CoinsText(price, style: const TextStyle(fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The user's most recent fill of [itemId] across buys and sells,
+/// by fill time when one is recorded, else the first match (the
+/// histories arrive newest-first).
+TpTransaction? _lastFillFor(AppState app, int itemId) {
+  TpTransaction? best;
+  for (final t in [...app.soldHistory, ...app.boughtHistory]) {
+    if (t.itemId != itemId) continue;
+    if (best == null) best = t;
+    final stamp = t.filledAt;
+    final bestStamp = best.filledAt;
+    if (stamp != null && (bestStamp == null || stamp.isAfter(bestStamp))) {
+      best = t;
+    }
+  }
+  return best;
+}
+
+/// Decision strip: the best executable craft margin plus a one-line
+/// position summary. Sits above the fold; the Craft card below holds
+/// the full scenario grid.
+class _BestCraftStrip extends StatelessWidget {
+  final CraftPricing pricing;
+  final CommerceQuote? quote;
+  final int itemId;
+
+  const _BestCraftStrip({
+    required this.pricing,
+    required this.quote,
+    required this.itemId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final best = pricing.best;
+    if (best == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final marginColor =
+        best.margin! >= 0 ? Colors.green : Colors.red;
+    final entryCost =
+        best.entry == CraftBasis.bid ? pricing.costBuy : pricing.costSell;
+    final exitNet =
+        best.exit == CraftBasis.bid ? pricing.netBuy : pricing.netSell;
+    final entryLabel = best.entry == CraftBasis.bid
+        ? 'Bid the ingredients'
+        : 'Buy the ingredients at Ask';
+    final exitLabel = best.exit == CraftBasis.ask
+        ? 'list at Ask'
+        : 'sell into bids';
+    final app = context.watch<AppState>();
+    final sells = [for (final o in app.sells) if (o.itemId == itemId) o];
+    final lastFill = _lastFillFor(app, itemId);
+    final positionLine = _positionLine(sells, lastFill);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Best craft',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.secondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                CoinsText(
+                  best.margin!,
+                  style: TextStyle(
+                    color: marginColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                if (best.roi != null)
+                  Text(
+                    '${(best.roi! * 100).toStringAsFixed(1)}% ROI',
+                    style: TextStyle(
+                      color: marginColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (entryCost != null && exitNet != null)
+              Text(
+                '$entryLabel (${formatCoins(entryCost)}) → $exitLabel, '
+                'nets ${formatCoins(exitNet)} per craft',
+              ),
+            if (positionLine != null) ...[
+              const Divider(),
+              Text(
+                positionLine,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// One-line position summary, or null when there is nothing to say.
+  String? _positionLine(List<TpOrder> sells, TpTransaction? lastFill) {
+    final parts = <String>[];
+    if (sells.isNotEmpty) {
+      final units = sells.fold<int>(0, (n, o) => n + o.quantity);
+      final lowest = sells.map((o) => o.price).reduce((a, b) => a < b ? a : b);
+      var line = '$units units listed from ${formatCoins(lowest)}';
+      final ask = quote?.sellPrice;
+      if (ask != null && ask > 0) {
+        final gap = lowest - ask;
+        if (gap > 0) {
+          line += ' — cheapest ${formatCoins(gap)} above the Ask '
+              '(${formatCoins(ask)})';
+        } else if (gap == 0) {
+          line += ' — cheapest at the Ask (${formatCoins(ask)})';
+        } else {
+          line += ' — cheapest ${formatCoins(-gap)} below the Ask '
+              '(${formatCoins(ask)})';
+        }
+      }
+      parts.add(line);
+    }
+    if (lastFill != null) {
+      final ago = timeAgo(lastFill.filledAt);
+      parts.add(
+        'Last fill ${formatCoins(lastFill.price)}'
+        '${ago.isEmpty ? '' : ', $ago'}',
+      );
+    }
+    if (parts.isEmpty) return null;
+    return parts.join('. ');
+  }
+}
+
 class _HeaderCard extends StatelessWidget {
   final ItemDetail detail;
+  final CommerceQuote? quote;
 
-  const _HeaderCard({required this.detail});
+  const _HeaderCard({required this.detail, required this.quote});
 
   @override
   Widget build(BuildContext context) {
@@ -436,6 +634,27 @@ class _HeaderCard extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (quote != null) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            if (quote!.buyPrice > 0)
+                              _PriceChip(
+                                label: 'Bid',
+                                price: quote!.buyPrice,
+                                color: Colors.green,
+                              ),
+                            if (quote!.sellPrice > 0)
+                              _PriceChip(
+                                label: 'Ask',
+                                price: quote!.sellPrice,
+                                color: Colors.red,
+                              ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -572,30 +791,37 @@ class _MarketCard extends StatelessWidget {
       title: 'Live market',
       child: Column(
         children: [
-          _KvRow(
-            label: 'Best bid',
-            value: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CoinsText(q.buyPrice,
-                    style: const TextStyle(color: Colors.green)),
-                Text(' ×${q.buyQuantity}'),
-              ],
-            ),
+          Row(
+            children: [
+              _StatBox(
+                label: 'Bid',
+                value: CoinsText(q.buyPrice,
+                    style: const TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    )),
+                sub: '×${q.buyQuantity}',
+              ),
+              const SizedBox(width: 8),
+              _StatBox(
+                label: 'Ask',
+                value: CoinsText(q.sellPrice,
+                    style: const TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                    )),
+                sub: '×${q.sellQuantity}',
+              ),
+              const SizedBox(width: 8),
+              _StatBox(
+                label: 'Spread',
+                value: CoinsText(q.spread,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                sub: '',
+              ),
+            ],
           ),
-          _KvRow(
-            label: 'Best ask',
-            value: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CoinsText(q.sellPrice,
-                    style: const TextStyle(color: Colors.red)),
-                Text(' ×${q.sellQuantity}'),
-              ],
-            ),
-          ),
-          const Divider(),
-          _KvRow(label: 'Spread', value: CoinsText(q.spread)),
+          const SizedBox(height: 8),
           _KvRow(
             label: 'Net after 15% fees',
             value: CoinsText((q.sellPrice * 0.85).round()),
@@ -624,18 +850,70 @@ class _MarketCard extends StatelessWidget {
   }
 }
 
+/// One stat box in the Live market row: a small label, a big value,
+/// and a quantity line underneath (empty when there is none, so the
+/// boxes stay the same height).
+class _StatBox extends StatelessWidget {
+  final String label;
+  final Widget value;
+  final String sub;
+
+  const _StatBox({
+    required this.label,
+    required this.value,
+    required this.sub,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 2),
+            value,
+            Text(
+              sub,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Clean two-column order book table: no depth bars, no shading.
+/// Levels holding one of your own open orders are marked "You".
 class _BookCard extends StatelessWidget {
   final ListingBook? book;
   final bool loading;
   final Object? error;
   final VoidCallback onRetry;
+  final int itemId;
 
   const _BookCard({
     required this.book,
     required this.loading,
     required this.error,
     required this.onRetry,
+    required this.itemId,
   });
 
   @override
@@ -659,6 +937,15 @@ class _BookCard extends StatelessWidget {
       if (b == null || b.levelCount == 0) {
         body = const _SectionNote(message: 'No open listings.');
       } else {
+        final app = context.watch<AppState>();
+        final ownBids = {
+          for (final o in app.buys)
+            if (o.itemId == itemId) o.price,
+        };
+        final ownAsks = {
+          for (final o in app.sells)
+            if (o.itemId == itemId) o.price,
+        };
         final bids = b.bids.take(10).toList();
         final asks = b.asks.take(10).toList();
         final rows = bids.length > asks.length ? bids.length : asks.length;
@@ -700,15 +987,23 @@ class _BookCard extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         child: i < bids.length
-                            ? Text(
-                                '${formatCoins(bids[i].unitPrice)} × ${_compact(bids[i].quantity)}')
+                            ? _levelRow(
+                                context,
+                                bids[i],
+                                ownBids.contains(bids[i].unitPrice),
+                                Colors.green,
+                              )
                             : const Text(''),
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         child: i < asks.length
-                            ? Text(
-                                '${formatCoins(asks[i].unitPrice)} × ${_compact(asks[i].quantity)}')
+                            ? _levelRow(
+                                context,
+                                asks[i],
+                                ownAsks.contains(asks[i].unitPrice),
+                                Colors.red,
+                              )
                             : const Text(''),
                       ),
                     ],
@@ -720,6 +1015,35 @@ class _BookCard extends StatelessWidget {
       }
     }
     return _Card(title: 'Order book', child: body);
+  }
+
+  /// One book level: price × quantity, plus a "You" tag when one of
+  /// your open orders sits at that price.
+  static Widget _levelRow(
+    BuildContext context,
+    ListingLevel level,
+    bool own,
+    Color color,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            '${formatCoins(level.unitPrice)} × ${_compact(level.quantity)}',
+          ),
+        ),
+        if (own)
+          Text(
+            ' · You',
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+      ],
+    );
   }
 
   static String _compact(int n) {
@@ -833,12 +1157,18 @@ class _HistoryCardState extends State<_HistoryCard> {
                     height: 190,
                     width: width,
                     child: CustomPaint(
-                      painter: _ChartPainter(data, _selected),
+                      painter: _ChartPainter(
+                        data,
+                        _selected,
+                        _ChartColors.of(context),
+                      ),
                     ),
                   ),
                 );
               },
             ),
+            const SizedBox(height: 8),
+            _HistoryLegend(last: data.last),
             const SizedBox(height: 4),
             Text(
               'Tap or drag the chart to inspect values.',
@@ -876,12 +1206,126 @@ int priceChartPickIndex(double dx, double width, int count) {
   return i;
 }
 
+/// Legend + source line under the price chart: red Ask / green Bid
+/// with the latest plotted values, and where the data came from.
+class _HistoryLegend extends StatelessWidget {
+  final PricePoint last;
+
+  const _HistoryLegend({required this.last});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = _ChartColors.of(context);
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _swatch(colors.ask),
+            const SizedBox(width: 6),
+            Text('Ask — now ${formatCoins(last.sell)}',
+                style: theme.textTheme.bodySmall),
+            const SizedBox(width: 16),
+            _swatch(colors.bid),
+            const SizedBox(width: 6),
+            Text('Bid — now ${formatCoins(last.buy)}',
+                style: theme.textTheme.bodySmall),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'GW2BLTC · through ${_ChartPainter.axisDate(last.time)}',
+          style: muted,
+        ),
+      ],
+    );
+  }
+
+  static Widget _swatch(Color color) => Container(
+        width: 14,
+        height: 3,
+        color: color,
+      );
+}
+
+/// Plot colors, derived from the theme: the warm light palette from
+/// the redesign (red Ask, green Bid, faint warm grid) in light mode,
+/// the old legible-on-dark colors in dark mode.
+class _ChartColors {
+  final Color grid;
+  final Color label;
+  final Color ask;
+  final Color bid;
+  final Color crosshair;
+  final Color tooltipBg;
+  final Color tooltipText;
+
+  const _ChartColors({
+    required this.grid,
+    required this.label,
+    required this.ask,
+    required this.bid,
+    required this.crosshair,
+    required this.tooltipBg,
+    required this.tooltipText,
+  });
+
+  factory _ChartColors.of(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final light = Theme.of(context).brightness == Brightness.light;
+    return _ChartColors(
+      grid: light
+          ? const Color(0xFFEFE6CF)
+          : const Color(0xFF3A3A48),
+      label: scheme.onSurfaceVariant,
+      ask: light
+          ? const Color(0xFFD64541)
+          : const Color(0xFFE57373),
+      bid: light
+          ? const Color(0xFF22783C)
+          : const Color(0xFF4DD0A6),
+      crosshair: scheme.onSurfaceVariant,
+      tooltipBg: light
+          ? scheme.surfaceContainerHighest
+          : const Color(0xDD2A2A38),
+      tooltipText: light ? scheme.onSurface : Colors.white,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ChartColors &&
+      grid == other.grid &&
+      label == other.label &&
+      ask == other.ask &&
+      bid == other.bid &&
+      crosshair == other.crosshair &&
+      tooltipBg == other.tooltipBg &&
+      tooltipText == other.tooltipText;
+
+  @override
+  int get hashCode => Object.hash(
+        grid,
+        label,
+        ask,
+        bid,
+        crosshair,
+        tooltipBg,
+        tooltipText,
+      );
+}
+
 /// Price chart with y (price) and x (date) axes, plus a touch crosshair.
 class _ChartPainter extends CustomPainter {
   final List<PricePoint> points;
   final int? selected;
+  final _ChartColors colors;
 
-  _ChartPainter(this.points, this.selected);
+  _ChartPainter(this.points, this.selected, this.colors);
 
   static const leftPad = 48.0;
   static const rightPad = 8.0;
@@ -920,9 +1364,9 @@ class _ChartPainter extends CustomPainter {
     double y(int v) => _topPad + (1 - (v - lo) / (hi - lo)) * plotH;
 
     final grid = Paint()
-      ..color = const Color(0xFF3A3A48)
+      ..color = colors.grid
       ..strokeWidth = 1;
-    final labelStyle = const TextStyle(color: Color(0xFF9A93B8), fontSize: 10);
+    final labelStyle = TextStyle(color: colors.label, fontSize: 10);
 
     void drawLabel(String text, double lx, double ly) {
       final tp = TextPainter(
@@ -944,7 +1388,7 @@ class _ChartPainter extends CustomPainter {
     for (var t = 0; t < 4; t++) {
       final i = (t * (data.length - 1) / 3).round();
       final tp = TextPainter(
-        text: TextSpan(text: _axisDate(data[i].time), style: labelStyle),
+        text: TextSpan(text: axisDate(data[i].time), style: labelStyle),
         textDirection: TextDirection.ltr,
       )..layout();
       tp.paint(
@@ -973,8 +1417,16 @@ class _ChartPainter extends CustomPainter {
       );
     }
 
-    stroke((p) => p.buy, const Color(0xFF4DD0A6));
-    stroke((p) => p.sell, const Color(0xFFFFA405));
+    stroke((p) => p.buy, colors.bid);
+    stroke((p) => p.sell, colors.ask);
+
+    // Endpoint dots: the latest plotted value per line, matching the
+    // legend's "now" values below the chart.
+    final lastP = data.last;
+    canvas.drawCircle(
+        Offset(x(data.length - 1), y(lastP.sell)), 3.5, Paint()..color = colors.ask);
+    canvas.drawCircle(
+        Offset(x(data.length - 1), y(lastP.buy)), 3.5, Paint()..color = colors.bid);
 
     // Touch crosshair: vertical line + dots + value box.
     final sel = selected;
@@ -985,16 +1437,15 @@ class _ChartPainter extends CustomPainter {
         Offset(cx, _topPad),
         Offset(cx, _topPad + plotH),
         Paint()
-          ..color = const Color(0xFF8A84A8)
+          ..color = colors.crosshair
           ..strokeWidth = 1,
       );
-      for (final entry in [(p.sell, const Color(0xFFFFA405)),
-          (p.buy, const Color(0xFF4DD0A6))]) {
+      for (final entry in [(p.sell, colors.ask), (p.buy, colors.bid)]) {
         canvas.drawCircle(
             Offset(cx, y(entry.$1)), 4, Paint()..color = entry.$2);
       }
       final lines = [
-        _axisDate(p.time),
+        axisDate(p.time),
         'Sell ${formatCoins(p.sell)}',
         'Buy ${formatCoins(p.buy)}',
       ];
@@ -1003,7 +1454,7 @@ class _ChartPainter extends CustomPainter {
           TextPainter(
             text: TextSpan(
                 text: l,
-                style: const TextStyle(color: Colors.white, fontSize: 11)),
+                style: TextStyle(color: colors.tooltipText, fontSize: 11)),
             textDirection: TextDirection.ltr,
           )..layout()
       ];
@@ -1014,7 +1465,7 @@ class _ChartPainter extends CustomPainter {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
             Rect.fromLTWH(bx, by, bw, bh), const Radius.circular(6)),
-        Paint()..color = const Color(0xDD2A2A38),
+        Paint()..color = colors.tooltipBg,
       );
       var ty = by + 6;
       for (final tp in tps) {
@@ -1036,86 +1487,35 @@ class _ChartPainter extends CustomPainter {
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
   ];
 
-  static String _axisDate(DateTime t) {
+  static String axisDate(DateTime t) {
     final local = t.toLocal();
     return '${_months[local.month - 1]} ${local.day}';
   }
 
   @override
   bool shouldRepaint(covariant _ChartPainter old) =>
-      old.points != points || old.selected != selected;
+      old.points != points ||
+      old.selected != selected ||
+      old.colors != colors;
 }
 
-class _CraftCard extends StatelessWidget {
+class _CraftCard extends StatefulWidget {
   final List<CraftRecipe> recipes;
-  final CommerceQuote? quote;
-  final Map<int, CommerceQuote>? ingredientPrices;
+  final CraftPricing? pricing;
   final bool loading;
   final Object? error;
   final VoidCallback? onRetry;
 
   const _CraftCard({
     required this.recipes,
-    required this.quote,
-    required this.ingredientPrices,
+    required this.pricing,
     required this.loading,
     required this.error,
     required this.onRetry,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    Widget body;
-    if (recipes.isEmpty) {
-      body = const _SectionNote(
-        message: 'No recipe found — not craftable.',
-      );
-    } else if (loading) {
-      body = const Center(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    } else if (error != null) {
-      body = _SectionNote(
-        message: 'Could not price ingredients.',
-        onRetry: onRetry,
-      );
-    } else {
-      final recipe = recipes.first;
-      final pricing = CraftPricing.compute(
-        recipe: recipe,
-        quote: quote,
-        ingredientPrices: ingredientPrices ?? const <int, CommerceQuote>{},
-      );
-      final disc = recipe.disciplines.map(_humanize).join(' · ');
-      body = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${disc.isNotEmpty ? '$disc · ' : ''}Makes ${recipe.outputCount}',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 8),
-          for (final line in pricing.lines)
-            CraftIngredientRow(
-              label:
-                  '×${line.ingredient.count} ${_ingredientName(app, line.ingredient.itemId)}',
-              buyLine: line.buyLine,
-              sellLine: line.sellLine,
-              vendorUsed: line.vendorUsed,
-            ),
-          const Divider(),
-          _CraftSummaryTable(pricing: pricing, quote: quote),
-        ],
-      );
-    }
-    return _Card(title: 'Craft', child: body);
-  }
+  State<_CraftCard> createState() => _CraftCardState();
 
   static String _ingredientName(AppState app, int id) {
     try {
@@ -1150,16 +1550,99 @@ class _CraftCard extends StatelessWidget {
   }
 }
 
-/// Bid/Ask table for the Craft card summary: one header row plus one row
-/// per metric, so "Buy"/"Sell" is said once instead of on every row. The
-/// Bid and Ask columns share one fixed flex each, so prices line up across
-/// rows whether they are copper, silver, or gold — the old "Buy … · Sell …"
-/// line put its separator dot at a different x on every row.
-class _CraftSummaryTable extends StatelessWidget {
-  final CraftPricing pricing;
-  final CommerceQuote? quote;
+class _CraftCardState extends State<_CraftCard> {
+  /// Selected scenario cell; defaults to the usual route (bid entry,
+  /// ask exit) and drives the breakdown strip below the grid.
+  CraftBasis _selectedEntry = CraftBasis.bid;
+  CraftBasis _selectedExit = CraftBasis.ask;
 
-  const _CraftSummaryTable({required this.pricing, required this.quote});
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    Widget body;
+    if (widget.recipes.isEmpty) {
+      body = const _SectionNote(
+        message: 'No recipe found — not craftable.',
+      );
+    } else if (widget.loading) {
+      body = const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    } else if (widget.error != null) {
+      body = _SectionNote(
+        message: 'Could not price ingredients.',
+        onRetry: widget.onRetry,
+      );
+    } else {
+      final recipe = widget.recipes.first;
+      final pricing = widget.pricing;
+      if (pricing == null) {
+        body = const _SectionNote(
+          message: 'Could not price ingredients.',
+        );
+      } else {
+        final disc = recipe.disciplines.map(_humanize).join(' · ');
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${disc.isNotEmpty ? '$disc · ' : ''}Makes ${recipe.outputCount}',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            for (final line in pricing.lines)
+              CraftIngredientRow(
+                label:
+                    '×${line.ingredient.count} ${_CraftCard._ingredientName(app, line.ingredient.itemId)}',
+                buyLine: line.buyLine,
+                sellLine: line.sellLine,
+                vendorUsed: line.vendorUsed,
+              ),
+            const Divider(),
+            _CraftContextTable(pricing: pricing),
+            const SizedBox(height: 12),
+            Text(
+              'Craft margin & ROI — all 4 scenarios',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.secondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            _ScenarioGrid(
+              pricing: pricing,
+              selectedEntry: _selectedEntry,
+              selectedExit: _selectedExit,
+              onSelect: (entry, exit) => setState(() {
+                _selectedEntry = entry;
+                _selectedExit = exit;
+              }),
+            ),
+            const SizedBox(height: 8),
+            _ScenarioBreakdown(
+              pricing: pricing,
+              entry: _selectedEntry,
+              exit: _selectedExit,
+            ),
+          ],
+        );
+      }
+    }
+    return _Card(title: 'Craft', child: body);
+  }
+}
+
+/// Cost and net-sell context for the scenario grid: one row per figure,
+/// "At bid" / "At ask" columns.
+class _CraftContextTable extends StatelessWidget {
+  final CraftPricing pricing;
+
+  const _CraftContextTable({required this.pricing});
 
   @override
   Widget build(BuildContext context) {
@@ -1181,64 +1664,38 @@ class _CraftSummaryTable extends StatelessWidget {
             const SizedBox.shrink(),
             Padding(
               padding: const EdgeInsets.only(bottom: 2),
-              child: Text('Bid',
+              child: Text('At bid',
                   textAlign: TextAlign.right, style: headerStyle),
             ),
             Padding(
               padding: const EdgeInsets.only(bottom: 2),
-              child: Text('Ask',
+              child: Text('At ask',
                   textAlign: TextAlign.right, style: headerStyle),
             ),
           ],
         ),
-        if (quote != null)
-          _row(
-            context,
-            'Item',
-            pricing.itemBuy == null
-                ? const Text('—')
-                : CoinsText(pricing.itemBuy!),
-            pricing.itemSell == null
-                ? const Text('—')
-                : CoinsText(pricing.itemSell!),
-          ),
         _row(
           context,
           'Craft cost',
           pricing.costBuy == null
-              ? const Text('Partial')
+              ? const Text('—')
               : CoinsText(pricing.costBuy!,
                   style: const TextStyle(fontWeight: FontWeight.bold)),
           pricing.costSell == null
-              ? const Text('Partial')
+              ? const Text('—')
               : CoinsText(pricing.costSell!,
                   style: const TextStyle(fontWeight: FontWeight.bold)),
         ),
-        if (pricing.netBuy != null || pricing.netSell != null)
-          _row(
-            context,
-            'Sells for (net)',
-            pricing.netBuy == null
-                ? const Text('—')
-                : CoinsText(pricing.netBuy!),
-            pricing.netSell == null
-                ? const Text('—')
-                : CoinsText(pricing.netSell!),
-          ),
-        if (pricing.marginBuy != null || pricing.marginSell != null)
-          _row(
-            context,
-            'Craft margin',
-            _CraftCard._marginValue(pricing.marginBuy),
-            _CraftCard._marginValue(pricing.marginSell),
-          ),
-        if (pricing.roiBuy != null || pricing.roiSell != null)
-          _row(
-            context,
-            'ROI %',
-            _CraftCard._roiValue(pricing.roiBuy, pricing.marginBuy),
-            _CraftCard._roiValue(pricing.roiSell, pricing.marginSell),
-          ),
+        _row(
+          context,
+          'Sells for (net)',
+          pricing.netBuy == null
+              ? const Text('—')
+              : CoinsText(pricing.netBuy!),
+          pricing.netSell == null
+              ? const Text('—')
+              : CoinsText(pricing.netSell!),
+        ),
       ],
     );
   }
@@ -1260,6 +1717,156 @@ class _CraftSummaryTable extends StatelessWidget {
           child: Align(alignment: Alignment.centerRight, child: sell),
         ),
       ],
+    );
+  }
+}
+
+/// Tappable 2x2 scenario grid: rows are how the ingredients are bought,
+/// columns are how the output is sold. Tapping a cell drives the
+/// breakdown strip below it.
+class _ScenarioGrid extends StatelessWidget {
+  final CraftPricing pricing;
+  final CraftBasis selectedEntry;
+  final CraftBasis selectedExit;
+  final void Function(CraftBasis entry, CraftBasis exit) onSelect;
+
+  const _ScenarioGrid({
+    required this.pricing,
+    required this.selectedEntry,
+    required this.selectedExit,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final headerStyle = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w600,
+    );
+    TableRow header = TableRow(
+      children: [
+        const SizedBox.shrink(),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text('Sell at bid',
+              textAlign: TextAlign.center, style: headerStyle),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text('Sell at ask',
+              textAlign: TextAlign.center, style: headerStyle),
+        ),
+      ],
+    );
+    return Table(
+      columnWidths: const {
+        0: FlexColumnWidth(2),
+        1: FlexColumnWidth(3),
+        2: FlexColumnWidth(3),
+      },
+      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+      children: [
+        header,
+        _row(context, 'Buy at bid', CraftBasis.bid),
+        _row(context, 'Buy at ask', CraftBasis.ask),
+      ],
+    );
+  }
+
+  TableRow _row(
+      BuildContext context, String label, CraftBasis entry) {
+    return TableRow(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(2),
+          child: _cell(context, entry, CraftBasis.bid),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(2),
+          child: _cell(context, entry, CraftBasis.ask),
+        ),
+      ],
+    );
+  }
+
+  Widget _cell(BuildContext context, CraftBasis entry, CraftBasis exit) {
+    final s = pricing.scenario(entry, exit);
+    final selected = entry == selectedEntry && exit == selectedExit;
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: () => onSelect(entry, exit),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        decoration: BoxDecoration(
+          color: selected ? scheme.secondaryContainer : null,
+          border: Border.all(
+            color: selected ? scheme.secondary : scheme.outlineVariant,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          children: [
+            if (s.isUsual)
+              Text(
+                'Your usual',
+                style: TextStyle(
+                  color: scheme.secondary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            _CraftCard._marginValue(s.margin),
+            _CraftCard._roiValue(s.roi, s.margin),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Breakdown of the selected scenario: cost → net sell → margin · ROI.
+class _ScenarioBreakdown extends StatelessWidget {
+  final CraftPricing pricing;
+  final CraftBasis entry;
+  final CraftBasis exit;
+
+  const _ScenarioBreakdown({
+    required this.pricing,
+    required this.entry,
+    required this.exit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final s = pricing.scenario(entry, exit);
+    final cost = entry == CraftBasis.bid ? pricing.costBuy : pricing.costSell;
+    final net = exit == CraftBasis.bid ? pricing.netBuy : pricing.netSell;
+    final theme = Theme.of(context);
+    final text = StringBuffer();
+    text.write('cost ${cost == null ? '—' : formatCoins(cost)}');
+    text.write(' → net sell ${net == null ? '—' : formatCoins(net)}');
+    text.write(
+        ' → margin ${s.margin == null ? '—' : formatCoins(s.margin!)}');
+    if (s.roi != null) {
+      text.write(' · ROI ${(s.roi! * 100).toStringAsFixed(1)}%');
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text.toString(),
+        style: theme.textTheme.bodySmall,
+      ),
     );
   }
 }
@@ -1355,7 +1962,24 @@ class _VendorTag extends StatelessWidget {
 class _PositionCard extends StatelessWidget {
   final int itemId;
 
-  const _PositionCard({required this.itemId});
+  /// Full order book; null until it loads. Ahead counts show only
+  /// once it arrives.
+  final ListingBook? book;
+
+  const _PositionCard({required this.itemId, required this.book});
+
+  /// Units listed ahead of a sell at [price]: asks priced strictly
+  /// below it. Same-price units don't count — within a level, queue
+  /// order is by time, not by anything this number can show.
+  int? _ahead(int price) {
+    final b = book;
+    if (b == null) return null;
+    var total = 0;
+    for (final ask in b.asks) {
+      if (ask.unitPrice < price) total += ask.quantity;
+    }
+    return total;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1381,13 +2005,7 @@ class _PositionCard extends StatelessWidget {
     final openSells = byPrice(app.sells);
     final buyPrices = openBuys.keys.toList()..sort((a, b) => b.compareTo(a));
     final sellPrices = openSells.keys.toList()..sort();
-    TpTransaction? lastFill;
-    for (final t in [...app.soldHistory, ...app.boughtHistory]) {
-      if (t.itemId == itemId) {
-        lastFill = t;
-        break;
-      }
-    }
+    final lastFill = _lastFillFor(app, itemId);
     return _Card(
       title: 'Your position',
       child: Column(
@@ -1399,36 +2017,101 @@ class _PositionCard extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-          for (final price in buyPrices)
+          if (buyPrices.isNotEmpty) ...[
             _KvRow(
-              label: 'Open buy',
-              value: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('×${openBuys[price]} '),
-                  CoinsText(price,
-                      style: const TextStyle(color: Colors.green)),
-                ],
+              label: 'Open buys',
+              value: Text(
+                '${buyPrices.length} listing${buyPrices.length == 1 ? '' : 's'}'
+                ' · ${openBuys.values.fold<int>(0, (n, q) => n + q)} units',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
-          for (final price in sellPrices)
+            for (final price in buyPrices)
+              _PositionOrderRow(
+                quantity: openBuys[price]!,
+                price: price,
+                color: Colors.green,
+              ),
+          ],
+          if (sellPrices.isNotEmpty) ...[
             _KvRow(
-              label: 'Open sell',
-              value: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('×${openSells[price]} '),
-                  CoinsText(price,
-                      style: const TextStyle(color: Colors.red)),
-                ],
+              label: 'Open sells',
+              value: Text(
+                '${sellPrices.length} listing${sellPrices.length == 1 ? '' : 's'}'
+                ' · ${openSells.values.fold<int>(0, (n, q) => n + q)} units',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
+            for (final price in sellPrices)
+              _PositionOrderRow(
+                quantity: openSells[price]!,
+                price: price,
+                color: Colors.red,
+                ahead: _ahead(price),
+              ),
+          ],
           if (buyPrices.isEmpty && sellPrices.isEmpty)
             const _SectionNote(message: 'No open orders.'),
           if (lastFill != null)
             _KvRow(
               label: 'Last fill',
-              value: CoinsText(lastFill.price),
+              value: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CoinsText(lastFill.price),
+                  if (timeAgo(lastFill.filledAt).isNotEmpty)
+                    Text(
+                      ' · ${timeAgo(lastFill.filledAt)}',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One open order inside a grouped Open buys / Open sells section: the
+/// label is said once in the group header, so the row is just the
+/// quantity, the price, and — for sells, once the book has loaded —
+/// the units listed ahead of it.
+class _PositionOrderRow extends StatelessWidget {
+  final int quantity;
+  final int price;
+  final Color color;
+  final int? ahead;
+
+  const _PositionOrderRow({
+    required this.quantity,
+    required this.price,
+    required this.color,
+    this.ahead,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text('×$quantity '),
+          CoinsText(price, style: TextStyle(color: color)),
+          if (ahead != null)
+            Text(
+              ' ($ahead ahead)',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
         ],
       ),

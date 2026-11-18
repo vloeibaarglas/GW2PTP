@@ -11,6 +11,13 @@
 ///
 /// A 0 side means "no orders on that side", not a price: it must never
 /// price an ingredient at 0.
+///
+/// Margins are priced as four scenarios — entry (how the ingredients
+/// are bought) crossed with exit (how the output is sold). The old
+/// table paired one entry with one exit per column, which mispriced
+/// the patient path: bidding on ingredients pairs with list-selling
+/// the output at the ask, not with dumping it into buy orders at
+/// the bid.
 library;
 
 import '../api/models.dart';
@@ -44,6 +51,36 @@ class CraftIngredientLine {
   bool get vendorUsed => vendorUsedBuy || vendorUsedSell;
 }
 
+/// Which side of the book a craft price comes from: [bid] is a buy
+/// order (place a bid, wait, cheaper), [ask] is an instant buy at the
+/// lowest listing — or, for an exit, a list-sell at the ask.
+enum CraftBasis { bid, ask }
+
+/// One execution path through a craft: how the ingredients are bought
+/// ([entry]) and how the output is sold ([exit]), with its margin and
+/// ROI.
+class CraftScenario {
+  final CraftBasis entry;
+  final CraftBasis exit;
+
+  /// Net exit minus entry cost; null when either side is unpriced.
+  final int? margin;
+
+  /// [margin] / entry cost; null when the margin is null or the cost
+  /// is 0.
+  final double? roi;
+
+  const CraftScenario({
+    required this.entry,
+    required this.exit,
+    required this.margin,
+    required this.roi,
+  });
+
+  /// The usual route: bid on the ingredients, list-sell the output.
+  bool get isUsual => entry == CraftBasis.bid && exit == CraftBasis.ask;
+}
+
 /// Both price bases for one recipe, computed by [CraftPricing.compute].
 class CraftPricing {
   /// Per-ingredient lines, in recipe order.
@@ -70,17 +107,9 @@ class CraftPricing {
   /// Output net of 15% fees at the ask (list-sell), null when no ask.
   final int? netSell;
 
-  /// Column-consistent margin: [netBuy] - [costBuy].
-  final int? marginBuy;
-
-  /// Column-consistent margin: [netSell] - [costSell].
-  final int? marginSell;
-
-  /// [marginBuy] / [costBuy], null when the cost is 0 or absent.
-  final double? roiBuy;
-
-  /// [marginSell] / [costSell], null when the cost is 0 or absent.
-  final double? roiSell;
+  /// All four entry x exit scenarios, in order (bid, bid), (bid, ask),
+  /// (ask, bid), (ask, ask).
+  final List<CraftScenario> scenarios;
 
   const CraftPricing({
     required this.lines,
@@ -90,11 +119,26 @@ class CraftPricing {
     required this.costSell,
     required this.netBuy,
     required this.netSell,
-    required this.marginBuy,
-    required this.marginSell,
-    required this.roiBuy,
-    required this.roiSell,
+    required this.scenarios,
   });
+
+  /// The scenario for one entry/exit pair.
+  CraftScenario scenario(CraftBasis entry, CraftBasis exit) =>
+      scenarios.firstWhere(
+        (s) => s.entry == entry && s.exit == exit,
+      );
+
+  /// The best-priced scenario (highest margin); null when none is
+  /// priced. In practice this is the bid-entry / ask-exit cell: the
+  /// cheapest entry with the best exit.
+  CraftScenario? get best {
+    CraftScenario? best;
+    for (final s in scenarios) {
+      if (s.margin == null) continue;
+      if (best == null || s.margin! > best.margin!) best = s;
+    }
+    return best;
+  }
 
   static CraftPricing compute({
     required CraftRecipe recipe,
@@ -139,20 +183,27 @@ class CraftPricing {
     final netBuy = net(quote?.buyPrice);
     final netSell = net(quote?.sellPrice);
 
-    // Column-consistent pairing: Margin Buy pairs the Buy exit
-    // (instant-sell into buy orders) with the Buy entry (buy-order
-    // ingredient cost), and Margin Sell pairs the Sell exit (list-sell)
-    // with the Sell entry (instant-buy ingredient cost). This is NOT a
-    // best/worst cross-pairing (cheapest entry with best exit) — each
-    // column prices one coherent execution path.
-    final marginBuy =
-        (netBuy != null && costBuy != null) ? netBuy - costBuy : null;
-    final marginSell =
-        (netSell != null && costSell != null) ? netSell - costSell : null;
+    int? margin(int? net, int? cost) =>
+        (net != null && cost != null) ? net - cost : null;
 
     double? roi(int? margin, int? cost) {
       if (margin == null || cost == null || cost <= 0) return null;
       return margin / cost;
+    }
+
+    CraftScenario scenario(
+      CraftBasis entry,
+      CraftBasis exit,
+      int? cost,
+      int? net,
+    ) {
+      final m = margin(net, cost);
+      return CraftScenario(
+        entry: entry,
+        exit: exit,
+        margin: m,
+        roi: roi(m, cost),
+      );
     }
 
     return CraftPricing(
@@ -163,10 +214,12 @@ class CraftPricing {
       costSell: costSell,
       netBuy: netBuy,
       netSell: netSell,
-      marginBuy: marginBuy,
-      marginSell: marginSell,
-      roiBuy: roi(marginBuy, costBuy),
-      roiSell: roi(marginSell, costSell),
+      scenarios: [
+        scenario(CraftBasis.bid, CraftBasis.bid, costBuy, netBuy),
+        scenario(CraftBasis.bid, CraftBasis.ask, costBuy, netSell),
+        scenario(CraftBasis.ask, CraftBasis.bid, costSell, netBuy),
+        scenario(CraftBasis.ask, CraftBasis.ask, costSell, netSell),
+      ],
     );
   }
 
