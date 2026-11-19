@@ -132,12 +132,11 @@ void main() {
 
       // Best craft strip leads with the usual route.
       expect(find.text('Best craft'), findsOneWidget);
-      expect(find.text('Your usual'), findsOneWidget);
 
       // Default selection is bid entry / ask exit.
       expect(
         find.text(
-            'cost 2s 97c → net sell 3s 49c → margin 52c · ROI 17.5%'),
+            'Cost 2s 97c → Net sell 3s 49c → Margin 52c (17c each) · ROI 17.5%'),
         findsOneWidget,
       );
 
@@ -147,7 +146,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.text(
-            'cost 3s 4c → net sell 3s 14c → margin 10c · ROI 3.3%'),
+            'Cost 3s 4c → Net sell 3s 14c → Margin 10c (3c each) · ROI 3.3%'),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);

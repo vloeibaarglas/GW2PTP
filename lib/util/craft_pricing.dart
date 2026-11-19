@@ -111,6 +111,10 @@ class CraftPricing {
   /// (ask, bid), (ask, ask).
   final List<CraftScenario> scenarios;
 
+  /// How many items one craft makes (recipe output count); the
+  /// breakdown strip shows the margin per item when this is > 1.
+  final int outputCount;
+
   const CraftPricing({
     required this.lines,
     required this.itemBuy,
@@ -120,6 +124,7 @@ class CraftPricing {
     required this.netBuy,
     required this.netSell,
     required this.scenarios,
+    required this.outputCount,
   });
 
   /// The scenario for one entry/exit pair.
@@ -220,6 +225,7 @@ class CraftPricing {
         scenario(CraftBasis.ask, CraftBasis.bid, costSell, netBuy),
         scenario(CraftBasis.ask, CraftBasis.ask, costSell, netSell),
       ],
+      outputCount: recipe.outputCount,
     );
   }
 

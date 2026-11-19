@@ -1169,14 +1169,6 @@ class _HistoryCardState extends State<_HistoryCard> {
             ),
             const SizedBox(height: 8),
             _HistoryLegend(last: data.last),
-            const SizedBox(height: 4),
-            Text(
-              'Tap or drag the chart to inspect values.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color:
-                        Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
           ],
         );
       }
@@ -1812,15 +1804,6 @@ class _ScenarioGrid extends StatelessWidget {
         ),
         child: Column(
           children: [
-            if (s.isUsual)
-              Text(
-                'Your usual',
-                style: TextStyle(
-                  color: scheme.secondary,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
             _CraftCard._marginValue(s.margin),
             _CraftCard._roiValue(s.roi, s.margin),
           ],
@@ -1849,10 +1832,14 @@ class _ScenarioBreakdown extends StatelessWidget {
     final net = exit == CraftBasis.bid ? pricing.netBuy : pricing.netSell;
     final theme = Theme.of(context);
     final text = StringBuffer();
-    text.write('cost ${cost == null ? '—' : formatCoins(cost)}');
-    text.write(' → net sell ${net == null ? '—' : formatCoins(net)}');
+    text.write('Cost ${cost == null ? '—' : formatCoins(cost)}');
+    text.write(' → Net sell ${net == null ? '—' : formatCoins(net)}');
     text.write(
-        ' → margin ${s.margin == null ? '—' : formatCoins(s.margin!)}');
+        ' → Margin ${s.margin == null ? '—' : formatCoins(s.margin!)}');
+    if (s.margin != null && pricing.outputCount > 1) {
+      final perItem = (s.margin! / pricing.outputCount).round();
+      text.write(' (${formatCoins(perItem)} each)');
+    }
     if (s.roi != null) {
       text.write(' · ROI ${(s.roi! * 100).toStringAsFixed(1)}%');
     }
