@@ -1,8 +1,8 @@
 # CI — signed size-optimized build on every push to main.
 #
 # What it does: analyze, test, then build a SIGNED release APK split
-# per ABI (arm64-v8a / armeabi-v7a / x86_64), hash-stamp each APK and
-# upload all three (+ .sha256 files) as a workflow artifact. It never
+# per ABI (arm64-v8a / x86_64), hash-stamp each APK and
+# upload both (+ .sha256 files) as a workflow artifact. It never
 # creates a tag or a GitHub Release — the manual "Release APK" workflow
 # stays the only path to a published release (and may one day just
 # promote one of these artifacts instead of rebuilding).
@@ -11,9 +11,10 @@
 # installs as an update over the app on your phone — no uninstall, no
 # lost local data. A debug build could not do that (different key).
 #
-# Why split: the fat APK is ~54 MB because it ships three copies of the
-# engine + Dart snapshot (one per ABI). Each split APK carries one ABI
-# only — roughly 20 MB each, about 60% smaller to download.
+# Why split: the fat APK ships one copy of the engine + Dart snapshot
+# per ABI. Each split APK carries one ABI only — roughly 20 MB each,
+# about half the fat download. (32-bit armeabi-v7a was dropped
+# 2026-11-19 via target-platform in android/gradle.properties.)
 #
 # Triggers: push to main only, plus manual dispatch. No pull_request:
 # PRs from forks cannot read the keystore secrets, so the restore step
