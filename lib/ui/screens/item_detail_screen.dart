@@ -439,7 +439,7 @@ TpTransaction? _lastFillFor(AppState app, int itemId) {
   TpTransaction? best;
   for (final t in [...app.soldHistory, ...app.boughtHistory]) {
     if (t.itemId != itemId) continue;
-    if (best == null) best = t;
+    best ??= t;
     final stamp = t.filledAt;
     final bestStamp = best.filledAt;
     if (stamp != null && (bestStamp == null || stamp.isAfter(bestStamp))) {

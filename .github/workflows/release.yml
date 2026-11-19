@@ -11,9 +11,10 @@
 #   and stamps that as the versionName in the built APK.
 # - Type a tag (e.g. v0.2, v1.0) to cut that version instead; it becomes
 #   both the release tag and the versionName (v1.0 -> versionName 1.0.0).
-# The versionCode is bumped from the run number, which guarantees every
-# release installs as an update over the previous one (Android requires
-# a strictly increasing versionCode).
+# The versionCode is the commit count (shared with the CI workflow),
+# which guarantees every release installs as an update over the previous
+# one — and over any CI build — since the count only ever rises (Android
+# requires a strictly increasing versionCode).
 #
 # Release body (automatic): the full commit SHA the build came from, the
 # APK's SHA-256, and a log of every commit since the previous release tag
@@ -47,7 +48,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -81,7 +82,7 @@ jobs:
 
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -121,11 +122,14 @@ jobs:
       - name: Stamp version from resolved tag
         run: |
           python3 - <<'EOF'
-          import re
+          import re, subprocess
+          # versionCode is the commit count, shared with the CI workflow so
+          # CI builds and releases install over each other either way.
+          count = subprocess.check_output(['git', 'rev-list', '--count', 'HEAD'], text=True).strip()
           p = 'pubspec.yaml'
           s = open(p).read()
           s2 = re.sub(r'(?m)^version:\s*(\S+)\+(\d+)\s*$',
-                      r'version: ${{ steps.version.outputs.version_name }}+${{ github.run_number }}', s)
+                      r'version: ${{ steps.version.outputs.version_name }}+' + count, s)
           assert s2 != s, 'version line not found in pubspec.yaml'
           open(p, 'w').write(s2)
           print('version now:', [l for l in s2.splitlines() if l.startswith('version:')][0])
